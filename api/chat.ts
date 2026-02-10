@@ -2,24 +2,24 @@
 import { GoogleGenAI } from "@google/genai";
 
 export const config = {
-  runtime: 'edge', // Using Edge runtime for faster streaming if on Vercel
+  runtime: 'nodejs', // Use Node.js runtime for standard process.env access
 };
 
-export default async function handler(req: Request) {
+export default async function handler(req: any, res: any) {
+  // Handle Vercel Serverless Function signature
   if (req.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405 });
+    return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
   try {
-    const { prompt, history, settings } = await req.json();
+    const { prompt, history, settings } = req.body;
 
     if (!process.env.API_KEY) {
-      return new Response(JSON.stringify({ error: 'Backend configuration error: Missing API Key' }), { status: 500 });
+      return res.status(500).json({ error: 'SERVER_CONFIG_ERROR: Missing API_KEY' });
     }
 
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Fix: Use ai.chats.create instead of ai.models.getGenerativeModel which is not available in the modern SDK
     const chat = ai.chats.create({
       model: 'gemini-3-flash-preview',
       config: {
@@ -34,35 +34,26 @@ export default async function handler(req: Request) {
       })),
     });
 
-    // Fix: sendMessageStream takes a structured message object and returns an async iterable of responses
     const streamResponse = await chat.sendMessageStream({ message: prompt });
 
-    // Create a ReadableStream to stream the chunks back to the frontend
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          // Fix: Iterate directly over the response from sendMessageStream
-          for await (const chunk of streamResponse) {
-            // Fix: Access the .text property directly instead of calling it as a method
-            const text = chunk.text;
-            if (text) {
-              controller.enqueue(new TextEncoder().encode(text));
-            }
-          }
-        } catch (e) {
-          console.error('Streaming error:', e);
-        } finally {
-          controller.close();
-        }
-      },
-    });
+    // Set headers for streaming
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.setHeader('Transfer-Encoding', 'chunked');
 
-    return new Response(stream, {
-      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-    });
+    for await (const chunk of streamResponse) {
+      if (chunk.text) {
+        res.write(chunk.text);
+      }
+    }
+    
+    res.end();
 
   } catch (error: any) {
     console.error('API Chat Error:', error);
-    return new Response(JSON.stringify({ error: error.message || 'Internal Server Error' }), { status: 500 });
+    if (!res.headersSent) {
+      res.status(500).json({ error: error.message || 'Internal Server Error' });
+    } else {
+      res.end();
+    }
   }
 }
