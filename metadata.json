@@ -1,0 +1,9 @@
+{
+  "name": "BurakAI Pro",
+  "description": "Ultra-modern, production-ready AI platform with real-time Gemini chat and creative image generation.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
