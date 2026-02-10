@@ -1,13 +1,10 @@
 
-import { GoogleGenAI } from "@google/genai";
 import { SettingsState, Message } from "../types";
 
 export class GeminiService {
-  private createClient(): GoogleGenAI {
-    // Fixed: Always use new GoogleGenAI({apiKey: process.env.API_KEY}); directly.
-    return new GoogleGenAI({ apiKey: process.env.API_KEY as string });
-  }
-
+  /**
+   * Proxies the request to our backend API to handle streaming safely.
+   */
   async generateTextStream(
     prompt: string,
     history: Message[],
@@ -15,62 +12,57 @@ export class GeminiService {
     onChunk: (text: string) => void
   ) {
     try {
-      const ai = this.createClient();
-      
-      // Direct SDK call is more reliable in this environment
-      const responseStream = await ai.models.generateContentStream({
-        model: 'gemini-3-flash-preview',
-        contents: [
-          ...history.map(h => ({
-            // Fixed: Explicitly cast role to "model" | "user" to satisfy strict SDK types
-            role: (h.role === 'assistant' ? 'model' : 'user') as "model" | "user",
-            parts: [{ text: h.content }]
-          })),
-          { role: 'user', parts: [{ text: prompt }] }
-        ],
-        config: {
-          systemInstruction: settings.systemPrompt,
-          temperature: settings.creativity,
-          topP: 0.95,
-          topK: 40,
-        },
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, history, settings }),
       });
 
-      let fullText = "";
-      for await (const chunk of responseStream) {
-        // Fixed: Directly access the .text property (it's a getter, not a method)
-        const text = chunk.text;
-        if (text) {
-          fullText += text;
-          onChunk(text);
-        }
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to connect to Neural Core');
       }
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+      let fullText = "";
+
+      if (!reader) throw new Error("Stream reader not available");
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value, { stream: true });
+        fullText += chunk;
+        onChunk(chunk);
+      }
+
       return fullText;
     } catch (error: any) {
-      console.error("Gemini Direct SDK Error:", error);
-      throw new Error(error.message || "Neural Link Interrupted: Check your connection.");
+      console.error("Frontend Service Error:", error);
+      throw new Error(error.message || "Neural Link Interrupted.");
     }
   }
 
+  /**
+   * Proxies image generation to the backend.
+   */
   async generateImage(prompt: string, aspectRatio: string = "1:1"): Promise<string> {
     try {
-      const ai = this.createClient();
-      const genResponse = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-image',
-        contents: [{ parts: [{ text: prompt }] }],
-        config: { 
-          imageConfig: { 
-            aspectRatio: aspectRatio as any 
-          } 
-        }
+      const response = await fetch('/api/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, aspectRatio }),
       });
-      
-      // Fixed: Iterate through all parts to find the image part (inlineData) as per guidelines
-      const part = genResponse.candidates?.[0]?.content?.parts.find(p => p.inlineData);
-      if (part?.inlineData?.data) {
-        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+
+      if (!response.ok) {
+        const errData = await response.json();
+        throw new Error(errData.error || 'Failed to synthesize image');
       }
-      throw new Error("Model failed to synthesize image data.");
+
+      const data = await response.json();
+      return data.imageUrl;
     } catch (error: any) {
       console.error("Image Synthesis Error:", error);
       throw new Error(error.message || "Neural Image synthesis failed.");

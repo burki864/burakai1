@@ -1,45 +1,68 @@
 
 import { GoogleGenAI } from "@google/genai";
 
-// Vercel Serverless Function Pattern
-export default async function handler(req: any, res: any) {
+export const config = {
+  runtime: 'edge', // Using Edge runtime for faster streaming if on Vercel
+};
+
+export default async function handler(req: Request) {
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
-
-  const { prompt, history, settings } = req.body;
-
-  if (!prompt) {
-    return res.status(400).json({ error: 'Prompt is required' });
+    return new Response(JSON.stringify({ error: 'Method Not Allowed' }), { status: 405 });
   }
 
   try {
+    const { prompt, history, settings } = await req.json();
+
+    if (!process.env.API_KEY) {
+      return new Response(JSON.stringify({ error: 'Backend configuration error: Missing API Key' }), { status: 500 });
+    }
+
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
-    // Model selection based on user settings or pro defaults
-    const model = 'gemini-3-flash-preview';
-
-    const response = await ai.models.generateContent({
-      model,
-      contents: [
-        ...history.map((h: any) => ({
-          role: h.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: h.content }]
-        })),
-        { role: 'user', parts: [{ text: prompt }] }
-      ],
+    // Fix: Use ai.chats.create instead of ai.models.getGenerativeModel which is not available in the modern SDK
+    const chat = ai.chats.create({
+      model: 'gemini-3-flash-preview',
       config: {
         systemInstruction: settings?.systemPrompt || 'You are BurakAI, a professional assistant.',
         temperature: settings?.creativity ?? 0.7,
         topP: 0.95,
         topK: 40,
-      }
+      },
+      history: history.map((h: any) => ({
+        role: h.role === 'assistant' ? 'model' : 'user',
+        parts: [{ text: h.content }]
+      })),
     });
 
-    const text = response.text;
-    return res.status(200).json({ text });
+    // Fix: sendMessageStream takes a structured message object and returns an async iterable of responses
+    const streamResponse = await chat.sendMessageStream({ message: prompt });
+
+    // Create a ReadableStream to stream the chunks back to the frontend
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          // Fix: Iterate directly over the response from sendMessageStream
+          for await (const chunk of streamResponse) {
+            // Fix: Access the .text property directly instead of calling it as a method
+            const text = chunk.text;
+            if (text) {
+              controller.enqueue(new TextEncoder().encode(text));
+            }
+          }
+        } catch (e) {
+          console.error('Streaming error:', e);
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    });
+
   } catch (error: any) {
     console.error('API Chat Error:', error);
-    return res.status(500).json({ error: error.message || 'Internal Server Error' });
+    return new Response(JSON.stringify({ error: error.message || 'Internal Server Error' }), { status: 500 });
   }
 }
