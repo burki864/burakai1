@@ -34,7 +34,12 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
   const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+    if (scrollRef.current) {
+      scrollRef.current.scrollTo({ 
+        top: scrollRef.current.scrollHeight, 
+        behavior: 'smooth' 
+      });
+    }
   }, [chat?.messages, streamingMessage]);
 
   const detectIntent = (text: string): 'image' | 'video' | 'text' => {
@@ -58,69 +63,148 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
   const startCamera = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      if (videoRef.current) { videoRef.current.srcObject = stream; setShowCamera(true); }
-    } catch (err) { setError("Vision Restricted."); }
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setShowCamera(true);
+      }
+    } catch (err) {
+      setError("Vision Restricted. Camera access denied.");
+    }
   };
 
   const stopCamera = () => {
-    if (videoRef.current?.srcObject) (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+    if (videoRef.current?.srcObject) {
+      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+    }
     setShowCamera(false);
   };
 
   const handleSend = async () => {
     const cleanInput = input.trim();
-    if (!cleanInput && attachments.length === 0 || isTyping) return;
+    if ((!cleanInput && attachments.length === 0) || isTyping) return;
 
     const intent = detectIntent(cleanInput);
-    if (intent === 'video' && !checkVideoRateLimit()) return;
+    
+    // API Key selection is mandatory for Veo
+    if (intent === 'video') {
+      const aistudio = (window as any).aistudio;
+      if (aistudio && !(await aistudio.hasSelectedApiKey())) {
+        try {
+          await aistudio.openSelectKey();
+        } catch (e) {
+          setError("API Key selection is mandatory for Video Synthesis.");
+          return;
+        }
+      }
+      if (!checkVideoRateLimit()) return;
+    }
 
-    // Persist user message to Supabase messages table
+    // Persist user message to Supabase
     try {
       if (cleanInput) await persistMessage(user.id, cleanInput);
     } catch (err) {
-      console.warn("Could not persist message to Supabase:", err);
+      console.warn("Persistence bypassed:", err);
     }
 
-    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: cleanInput, timestamp: Date.now(), attachments: [...attachments] };
-    const newMessages = [...(chat?.messages || []), userMsg];
+    const userMsg: Message = { 
+      id: Date.now().toString(), 
+      role: 'user', 
+      content: cleanInput, 
+      timestamp: Date.now(), 
+      attachments: [...attachments] 
+    };
+    
+    const currentMessages = chat?.messages || [];
+    const newMessages = [...currentMessages, userMsg];
     
     if (!chat) return onNewChat();
     onUpdateMessages(newMessages);
+    
     setInput('');
     setAttachments([]);
     setIsTyping(true);
     setError(null);
 
     if (intent === 'image') {
-      const genMsg: Message = { id: 'gen-'+Date.now(), role: 'assistant', content: '', timestamp: Date.now(), isGenerating: true, generationType: 'image' };
+      const genMsg: Message = { 
+        id: 'gen-' + Date.now(), 
+        role: 'assistant', 
+        content: '', 
+        timestamp: Date.now(), 
+        isGenerating: true, 
+        generationType: 'image' 
+      };
+      
       onUpdateMessages([...newMessages, genMsg]);
+      
       try {
         const url = await geminiService.generateImage(cleanInput);
-        onUpdateMessages([...newMessages, { ...genMsg, isGenerating: false, imageUrl: url }]);
-      } catch (e: any) { setError(e.message); onUpdateMessages(newMessages); }
+        onUpdateMessages([...newMessages, { 
+          ...genMsg, 
+          isGenerating: false, 
+          imageUrl: url 
+        }]);
+      } catch (e: any) {
+        setError(e.message);
+        onUpdateMessages(newMessages);
+      }
       setIsTyping(false);
     } else if (intent === 'video') {
-      const genMsg: Message = { id: 'gen-v-'+Date.now(), role: 'assistant', content: '', timestamp: Date.now(), isGenerating: true, generationType: 'video' };
+      const genMsg: Message = { 
+        id: 'gen-v-' + Date.now(), 
+        role: 'assistant', 
+        content: '', 
+        timestamp: Date.now(), 
+        isGenerating: true, 
+        generationType: 'video' 
+      };
+      
       onUpdateMessages([...newMessages, genMsg]);
+      
       try {
         storageService.setLastVideoTimestamp(Date.now());
-        const res = await fetch('/api/video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: cleanInput }) });
-        const data = await res.json();
-        if (data.error) throw new Error(data.error);
-        onUpdateMessages([...newMessages, { ...genMsg, isGenerating: false, videoUrl: data.videoUrl }]);
-      } catch (e: any) { setError(e.message); onUpdateMessages(newMessages); }
+        const url = await geminiService.generateVideo(cleanInput, '16:9');
+        onUpdateMessages([...newMessages, { 
+          ...genMsg, 
+          isGenerating: false, 
+          videoUrl: url 
+        }]);
+      } catch (e: any) {
+        if (e.message?.includes("Requested entity was not found") && (window as any).aistudio) {
+          await (window as any).aistudio.openSelectKey();
+        }
+        setError(e.message);
+        onUpdateMessages(newMessages);
+      }
       setIsTyping(false);
     } else {
       try {
-        const fullResponse = await geminiService.generateTextStream(cleanInput, newMessages, settings, userMsg.attachments || [], (chunk) => setStreamingMessage(prev => prev + chunk));
+        const fullResponse = await geminiService.generateTextStream(
+          cleanInput, 
+          newMessages, 
+          settings, 
+          userMsg.attachments || [], 
+          (chunk) => setStreamingMessage(prev => prev + chunk)
+        );
         
-        // Persist assistant message too
         try {
           await persistMessage(user.id, fullResponse);
-        } catch (err) { console.warn("Could not persist assistant response:", err); }
+        } catch (err) {
+          console.warn("Response persistence bypassed.");
+        }
 
-        onUpdateMessages([...newMessages, { id: Date.now().toString(), role: 'assistant', content: fullResponse, timestamp: Date.now() }]);
-      } catch (err: any) { setError(err.message); } finally { setIsTyping(false); setStreamingMessage(''); }
+        onUpdateMessages([...newMessages, { 
+          id: Date.now().toString(), 
+          role: 'assistant', 
+          content: fullResponse, 
+          timestamp: Date.now() 
+        }]);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setIsTyping(false);
+        setStreamingMessage('');
+      }
     }
   };
 
@@ -128,7 +212,8 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
 
   return (
     <div className={`flex-1 flex flex-col min-h-0 relative overflow-hidden transition-all ${isDraggingFile ? 'bg-blue-600/5 ring-2 ring-blue-500/20' : 'bg-transparent'}`}
-      onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }} onDragLeave={() => setIsDraggingFile(false)}
+      onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }} 
+      onDragLeave={() => setIsDraggingFile(false)}
       onDrop={(e) => { e.preventDefault(); setIsDraggingFile(false); }}>
       
       <header className="px-4 py-3 md:px-10 md:py-6 flex items-center justify-between glass-panel sticky top-0 z-20 border-b border-white/10">
@@ -167,14 +252,32 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
               {msg.role === 'user' ? <UserIcon size={14} className="md:w-8 md:h-8" /> : <Logo size={20} className="md:w-9 md:h-9" />}
             </div>
             <div className={`flex flex-col space-y-3 md:space-y-5 max-w-[88%] md:max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              {msg.isGenerating && <GenerationAnimation type={msg.generationType || 'image'} />}
+              {msg.isGenerating && (
+                <div className="flex flex-col items-center gap-6 animate-in zoom-in">
+                  <GenerationAnimation type={msg.generationType || 'image'} />
+                  {msg.generationType === 'video' && (
+                    <div className="text-center">
+                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] animate-pulse">Neural synthesis in progress</p>
+                      <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest mt-1">Completion: 1-3 minutes</p>
+                    </div>
+                  )}
+                </div>
+              )}
               
-              {msg.imageUrl && <img src={msg.imageUrl} className="w-full max-w-[400px] rounded-2xl md:rounded-[3rem] shadow-2xl border border-white/10" />}
+              {msg.imageUrl && (
+                <img 
+                  src={msg.imageUrl} 
+                  className="w-full aspect-square max-w-[280px] md:max-w-[400px] object-cover rounded-2xl md:rounded-[3rem] shadow-2xl border border-white/10 animate-in zoom-in duration-300" 
+                  alt="Neural Synthesis"
+                />
+              )}
               
               {msg.videoUrl && (
-                <video controls autoPlay loop playsInline className="w-full max-w-[600px] rounded-2xl md:rounded-[3rem] shadow-2xl border border-white/10">
-                   <source src={msg.videoUrl} type="video/mp4" />
-                </video>
+                <div className="w-full max-w-[600px] rounded-2xl md:rounded-[3rem] shadow-2xl border border-white/10 overflow-hidden ring-4 ring-blue-500/5 animate-in zoom-in duration-500">
+                  <video controls autoPlay loop playsInline className="w-full">
+                     <source src={msg.videoUrl} type="video/mp4" />
+                  </video>
+                </div>
               )}
               
               {msg.content && (
@@ -199,11 +302,21 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
 
       <div className="p-4 md:p-10 bg-gradient-to-t from-slate-950 to-transparent">
         <div className="max-w-4xl mx-auto space-y-3">
-            {error && <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] md:text-xs font-black flex items-center gap-2 animate-in fade-in slide-in-from-top-1"><AlertCircle size={14} /> {error}</div>}
+            {error && (
+              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] md:text-xs font-black flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                <AlertCircle size={14} /> {error}
+              </div>
+            )}
             
             <div className="glass-panel rounded-2xl md:rounded-[3rem] border-white/10 p-2 md:p-4 shadow-3xl">
-                <textarea rows={1} value={input}
-                    onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`; }}
+                <textarea 
+                    rows={1} 
+                    value={input}
+                    onChange={(e) => { 
+                      setInput(e.target.value); 
+                      e.target.style.height = 'auto'; 
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`; 
+                    }}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                     placeholder={t.placeholder}
                     className="w-full bg-transparent border-none focus:ring-0 p-3 md:p-6 text-white font-bold text-lg md:text-3xl placeholder-slate-700 resize-none" />
@@ -212,7 +325,9 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
                         <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-slate-500 hover:text-blue-400 transition-colors"><Paperclip size={20} className="md:w-6 md:h-6" /></button>
                         <button onClick={startCamera} className="p-2.5 text-slate-500 hover:text-purple-400 transition-colors"><Camera size={20} className="md:w-6 md:h-6" /></button>
                     </div>
-                    <button onClick={handleSend} disabled={(!input.trim() && attachments.length === 0) || isTyping}
+                    <button 
+                        onClick={handleSend} 
+                        disabled={(!input.trim() && attachments.length === 0) || isTyping}
                         className={`w-11 h-11 md:w-16 md:h-16 rounded-xl md:rounded-[1.8rem] transition-all flex items-center justify-center ${(!input.trim() && attachments.length === 0) || isTyping ? 'bg-slate-900 text-slate-600' : 'bg-blue-600 text-white shadow-3xl hover:scale-105 active:scale-95'}`}>
                         {isTyping ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} className="md:w-8 md:h-8" />}
                     </button>

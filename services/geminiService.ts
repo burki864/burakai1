@@ -1,5 +1,6 @@
 
 import { SettingsState, Message, Attachment } from "../types";
+import { GoogleGenAI } from "@google/genai";
 
 export class GeminiService {
   async generateTextStream(
@@ -61,6 +62,52 @@ export class GeminiService {
     } catch (error: any) {
       throw error;
     }
+  }
+
+  async generateVideo(prompt: string, aspectRatio: '16:9' | '9:16' = '16:9', onProgress?: (msg: string) => void): Promise<string> {
+    // Create fresh instance to use latest API key from selection dialog
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    onProgress?.("Initiating neural video synthesis...");
+    let operation = await ai.models.generateVideos({
+      model: 'veo-3.1-fast-generate-preview',
+      prompt: prompt,
+      config: {
+        numberOfVideos: 1,
+        resolution: '720p',
+        aspectRatio: aspectRatio
+      }
+    });
+
+    onProgress?.("Synthesizing frames in the cloud...");
+    while (!operation.done) {
+      await new Promise(resolve => setTimeout(resolve, 10000));
+      onProgress?.(this.getRandomLoadingMessage());
+      operation = await ai.operations.getVideosOperation({operation: operation});
+    }
+
+    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+    if (!downloadLink) throw new Error("Neural synthesis failed to produce content.");
+
+    onProgress?.("Finalizing video stream...");
+    // Must append API key when fetching from the download link
+    const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+    const blob = await response.blob();
+    return URL.createObjectURL(blob);
+  }
+
+  private getRandomLoadingMessage() {
+    const messages = [
+      "Encoding temporal dimensions...",
+      "Interpolating motion vectors...",
+      "Refining neural textures...",
+      "Spatio-temporal synthesis in progress...",
+      "Applying cinematic lighting...",
+      "Stabilizing visual coherence...",
+      "Dreaming the pixels into existence...",
+      "Mapping neural pathways..."
+    ];
+    return messages[Math.floor(Math.random() * messages.length)];
   }
 }
 
