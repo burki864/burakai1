@@ -7,15 +7,15 @@ export const DEFAULT_SETTINGS: SettingsState = {
   showTimestamps: true,
   personality: Personality.Normal,
   creativity: 0.7,
-  systemPrompt: 'You are BurakAI, an advanced AI with real-time web access and creative vision.',
+  systemPrompt: 'You are BurakAI, a high-performance neural assistant powered by Groq. You are helpful, precise, and respond with extreme speed.',
   searchEnabled: false,
   activeTheme: 'default'
 };
 
 export const MODELS = {
-  text: 'gemini-3-pro-preview',
+  text: 'llama-3.3-70b-versatile',
   image: 'gemini-2.5-flash-image',
-  video: 'veo-3.1-fast-generate-preview'
+  video: 'pika-video-turbo'
 };
 
 export const INTENT_KEYWORDS = {
@@ -35,8 +35,8 @@ export const TRANSLATIONS: Record<Language, any> = {
       proCore: 'Pro Core'
     },
     chat: {
-      welcome: 'BurakAI Pro',
-      subtitle: 'Real-time Web Access • Creative Vision • Neural Synthesis',
+      welcome: 'BurakAI Ultra',
+      subtitle: 'Powered by Groq • Creative Vision • Neural Synthesis',
       init: 'Initiate Link',
       placeholder: 'Ask anything or use "/" for tools...',
       searchOn: 'Web Search Active',
@@ -48,8 +48,8 @@ export const TRANSLATIONS: Record<Language, any> = {
       video: 'Synthesize Video',
       rateLimit: 'Wait 60s between video links.',
       features: [
-        { title: 'Global Search', desc: 'Real-time grounding via Google Search' },
-        { title: 'Multi-Modal', desc: 'Analyze files and images instantly' },
+        { title: 'Groq Speed', desc: 'Instant responses via Llama 3.3 70B' },
+        { title: 'Vision Core', desc: 'Analyze images with Llama 3.2 Vision' },
         { title: 'Video Synth', desc: 'Generate 1080p neural clips' }
       ]
     },
@@ -77,8 +77,8 @@ export const TRANSLATIONS: Record<Language, any> = {
       proCore: 'Pro Çekirdek'
     },
     chat: {
-      welcome: 'BurakAI Pro',
-      subtitle: 'Gerçek Zamanlı Web Erişimi • Yaratıcı Vizyon',
+      welcome: 'BurakAI Ultra',
+      subtitle: 'Groq Altyapısı • Yaratıcı Vizyon • Nöral Sentez',
       init: 'Bağlantıyı Başlat',
       placeholder: 'Bir şey sorun veya "/" ile araçları görün...',
       searchOn: 'Web Araması Aktif',

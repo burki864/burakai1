@@ -5,9 +5,10 @@ import {
   Search, Globe, Camera, Image as ImageIcon, Paperclip, 
   X, ExternalLink, Zap, Video, FileText
 } from 'lucide-react';
-import { ChatSession, Message, SettingsState, Attachment } from '../types';
+import { ChatSession, Message, SettingsState, Attachment, User } from '../types';
 import { geminiService } from '../services/geminiService';
 import { storageService } from '../services/storageService';
+import { sendMessage as persistMessage } from '../services/supabase';
 import { TRANSLATIONS, INTENT_KEYWORDS } from '../constants';
 import Logo from './Logo';
 import GenerationAnimation from './GenerationAnimation';
@@ -15,18 +16,17 @@ import GenerationAnimation from './GenerationAnimation';
 interface ChatViewProps {
   chat?: ChatSession;
   settings: SettingsState;
-  userPlan?: 'free' | 'pro';
+  user: User;
   onUpdateMessages: (messages: Message[]) => void;
   onNewChat: () => void;
 }
 
-const ChatView: React.FC<ChatViewProps> = ({ chat, settings, userPlan = 'free', onUpdateMessages, onNewChat }) => {
+const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessages, onNewChat }) => {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [searchEnabled, setSearchEnabled] = useState(settings.searchEnabled);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -74,6 +74,13 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, userPlan = 'free', 
     const intent = detectIntent(cleanInput);
     if (intent === 'video' && !checkVideoRateLimit()) return;
 
+    // Persist user message to Supabase messages table
+    try {
+      if (cleanInput) await persistMessage(user.id, cleanInput);
+    } catch (err) {
+      console.warn("Could not persist message to Supabase:", err);
+    }
+
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content: cleanInput, timestamp: Date.now(), attachments: [...attachments] };
     const newMessages = [...(chat?.messages || []), userMsg];
     
@@ -105,9 +112,14 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, userPlan = 'free', 
       setIsTyping(false);
     } else {
       try {
-        let groundingUrls: any[] = [];
-        const fullResponse = await geminiService.generateTextStream(cleanInput, newMessages, { ...settings, searchEnabled }, attachments, (chunk) => setStreamingMessage(prev => prev + chunk), (urls) => { groundingUrls = urls; });
-        onUpdateMessages([...newMessages, { id: Date.now().toString(), role: 'assistant', content: fullResponse, timestamp: Date.now(), groundingUrls: groundingUrls.length > 0 ? groundingUrls : undefined }]);
+        const fullResponse = await geminiService.generateTextStream(cleanInput, newMessages, settings, userMsg.attachments || [], (chunk) => setStreamingMessage(prev => prev + chunk));
+        
+        // Persist assistant message too
+        try {
+          await persistMessage(user.id, fullResponse);
+        } catch (err) { console.warn("Could not persist assistant response:", err); }
+
+        onUpdateMessages([...newMessages, { id: Date.now().toString(), role: 'assistant', content: fullResponse, timestamp: Date.now() }]);
       } catch (err: any) { setError(err.message); } finally { setIsTyping(false); setStreamingMessage(''); }
     }
   };
@@ -125,14 +137,16 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, userPlan = 'free', 
           <div className="min-w-0">
             <h3 className="font-black text-sm md:text-2xl tracking-tighter leading-none truncate">{chat?.title || t.welcome}</h3>
             <div className="flex items-center gap-2 mt-1">
-               <span className="text-[7px] md:text-[10px] text-slate-500 font-bold uppercase tracking-widest">{searchEnabled ? t.searchOn : t.searchOff}</span>
-               <span className="bg-blue-600/20 text-blue-400 text-[6px] md:text-[8px] font-black px-1.5 rounded-sm uppercase">Neural Core</span>
+               <span className="text-[7px] md:text-[10px] text-blue-400 font-bold uppercase tracking-widest">Neural Link Active</span>
             </div>
           </div>
         </div>
-        <button onClick={() => setSearchEnabled(!searchEnabled)} className={`p-1.5 md:p-3 rounded-lg transition-all flex items-center gap-2 font-black text-[8px] md:text-[10px] uppercase tracking-widest ${searchEnabled ? 'bg-blue-600/20 text-blue-400 border border-blue-500/50' : 'bg-slate-900 text-slate-500'}`}>
-            <Search size={14} className="md:w-4 md:h-4" /> <span className="hidden sm:inline">Search</span>
-        </button>
+        <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                <Zap size={12} className="text-emerald-400" />
+                <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">Real-time Node</span>
+            </div>
+        </div>
       </header>
 
       <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 md:px-10 py-6 md:py-16 space-y-8 md:space-y-12 custom-scrollbar">
@@ -166,16 +180,6 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, userPlan = 'free', 
               {msg.content && (
                 <div className={`p-4 md:p-10 rounded-2xl md:rounded-[3.5rem] text-base md:text-2xl font-bold leading-relaxed shadow-xl chat-bubble ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'glass-panel border-white/5 text-slate-100'}`}>
                   {msg.content}
-                </div>
-              )}
-
-              {msg.groundingUrls && (
-                <div className="flex flex-wrap gap-2 pt-1">
-                    {msg.groundingUrls.map((url, i) => (
-                        <a key={i} href={url.uri} target="_blank" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] md:text-xs font-black border border-blue-500/20 hover:bg-blue-500/20 transition-all">
-                            <Globe size={12} /> <span className="truncate max-w-[120px] md:max-w-xs">{url.title}</span> <ExternalLink size={10} />
-                        </a>
-                    ))}
                 </div>
               )}
             </div>

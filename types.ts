@@ -1,4 +1,14 @@
 
+export interface UserProfile {
+  id: string;
+  username: string;
+  email: string;
+  avatar_url?: string;
+  banned: boolean;
+  ban_until?: string | null;
+  created_at: string;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -6,8 +16,7 @@ export interface User {
   provider: 'google' | 'email';
   createdAt: string;
   plan: 'free' | 'pro';
-  isBanned?: boolean;
-  banExpiresAt?: number;
+  profile?: UserProfile;
 }
 
 export type ThemeType = 'default' | 'rain' | 'desert' | 'nebula' | 'cyberpunk';

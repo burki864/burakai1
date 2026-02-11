@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mail, Lock, Sparkles, CheckCircle2, ShieldCheck, Github, Chrome, ShieldAlert, Cpu, Loader2, Move, ExternalLink } from 'lucide-react';
-import { supabase, isSupabaseConfigured } from '../services/supabase';
+import { Mail, Lock, Move, Chrome, Github, ShieldAlert, Loader2, ExternalLink, Camera } from 'lucide-react';
+import { supabase, isSupabaseConfigured, createProfile } from '../services/supabase';
 import { User, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
 import Logo from './Logo';
@@ -27,8 +27,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
 
-  // Note: auth key is expected in TRANSLATIONS[lang] but not provided in constants.ts
-  // Assuming it might be dynamically extended or fixed separately.
   const t = TRANSLATIONS[lang].auth || {
     login: 'Login', signup: 'Sign Up', uplink: 'Uplink', email: 'Email', password: 'Password',
     initiate: 'Initiate Link', secure: 'Secure Link', multiNode: 'Multi-Node Access',
@@ -36,7 +34,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   useEffect(() => {
-    // Detect system language
     if (navigator.language.startsWith('tr')) setLang(Language.TR);
     
     const interval = setInterval(() => {
@@ -60,7 +57,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     return () => clearInterval(interval);
   }, []);
 
-  const handleGoogleCredentialResponse = (response: any) => {
+  const handleGoogleCredentialResponse = async (response: any) => {
     setLoading(true);
     try {
       const base64Url = response.credential.split('.')[1];
@@ -71,16 +68,19 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
       const payload = JSON.parse(jsonPayload);
 
-      onLogin({
+      const user: User = {
         id: payload.sub,
         email: payload.email,
         name: payload.name,
         provider: 'google',
         createdAt: new Date().toISOString(),
-        plan: 'free' // Fix: Property 'plan' is missing
-      });
+        plan: 'free'
+      };
+
+      await createProfile(user);
+      onLogin(user);
     } catch (err) {
-      console.error("Google Token Decode Error:", err);
+      console.error("Google Auth Error:", err);
       setError("Failed to verify identity node.");
     } finally {
       setLoading(false);
@@ -94,41 +94,41 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
     if (!isSupabaseConfigured) {
       setTimeout(() => {
-        onLogin({
+        const user: User = {
           id: 'dev-operative',
           email,
           name: email.split('@')[0],
           provider: 'email',
           createdAt: new Date().toISOString(),
-          plan: 'free' // Fix: Property 'plan' is missing
-        });
+          plan: 'free'
+        };
+        onLogin(user);
         setLoading(false);
       }, 800);
       return;
     }
 
     try {
-      const auth = (supabase as any).auth;
+      // Fix: Cast supabase.auth to any to resolve property access errors in this environment
+      const auth = supabase.auth as any;
       const { data, error: supabaseError } = mode === 'login' 
         ? await auth.signInWithPassword({ email, password })
         : await auth.signUp({ email, password });
 
-      if (supabaseError) {
-        if (supabaseError.message === 'Invalid login credentials' && mode === 'login') {
-          throw new Error('Account not found. Please click "Register Core" below to create your identity.');
-        }
-        throw supabaseError;
-      }
+      if (supabaseError) throw supabaseError;
 
       if (data.user) {
-        onLogin({
+        const user: User = {
           id: data.user.id,
           email: data.user.email!,
           name: data.user.user_metadata?.full_name || email.split('@')[0],
           provider: 'email',
           createdAt: data.user.created_at,
-          plan: 'free' // Fix: Property 'plan' is missing
-        });
+          plan: 'free'
+        };
+
+        await createProfile(user);
+        onLogin(user);
       }
     } catch (err: any) {
       setError(err.message || "Auth Error.");
@@ -140,56 +140,32 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const handleGoogleLogin = () => {
     setOriginError(false);
     if ((window as any).google?.accounts?.id) {
-      try {
-        (window as any).google.accounts.id.prompt((notification: any) => {
-          if (notification.isNotDisplayed()) {
-            const reason = notification.getNotDisplayedReason();
-            console.warn("GSI Prompt Not Displayed:", reason);
-            if (reason === 'opt_out_or_no_session' || reason === 'suppressed_by_user') {
-               setError("Please ensure you are logged into a Google account in this browser.");
-            } else {
-               setOriginError(true);
-               setError(`Identity link restricted for origin: ${window.location.origin}`);
-            }
-          }
-        });
-      } catch (e) {
-        setError("Login node unreachable. Try traditional email access.");
-      }
+      (window as any).google.accounts.id.prompt((notification: any) => {
+        if (notification.isNotDisplayed()) {
+          setError("Google login prompt suppressed. Check your account session.");
+        }
+      });
     } else {
       setError("Initializing Google Identity Node...");
     }
   };
 
-  // Dragging Handlers
   const onMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, input, textarea, a')) return;
-    
     setIsDragging(true);
-    setDragStart({
-      x: e.clientX - position.x,
-      y: e.clientY - position.y
-    });
+    setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
   };
 
   useEffect(() => {
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging) return;
-      setPosition({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y
-      });
+      setPosition({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
     };
-
-    const onMouseUp = () => {
-      setIsDragging(false);
-    };
-
+    const onMouseUp = () => setIsDragging(false);
     if (isDragging) {
       window.addEventListener('mousemove', onMouseMove);
       window.addEventListener('mouseup', onMouseUp);
     }
-
     return () => {
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
@@ -210,7 +186,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             Neural<br/><span className="gradient-text">Core.</span>
           </h1>
           <p className="text-xl md:text-2xl text-slate-500 font-bold leading-relaxed tracking-tight">
-            Next-generation Gemini orchestration with industrial-grade persistence.
+            High-performance Groq integration with Supabase-backed persistence.
           </p>
         </div>
       </div>
@@ -223,132 +199,71 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             transform: `translate(${position.x}px, ${position.y}px)`,
             cursor: isDragging ? 'grabbing' : 'grab'
           }}
-          className={`w-full max-w-md glass-panel p-8 md:p-14 rounded-[3rem] md:rounded-[4rem] border-white/10 shadow-[0_0_120px_rgba(0,0,0,0.6)] my-8 select-none transition-shadow duration-300 ${isDragging ? 'shadow-[0_40px_100px_rgba(0,0,0,0.8)] z-50' : ''}`}
+          className={`w-full max-w-md glass-panel p-8 md:p-14 rounded-[3rem] md:rounded-[4rem] border-white/10 shadow-[0_0_120px_rgba(0,0,0,0.6)] my-8 transition-shadow duration-300 ${isDragging ? 'shadow-[0_40px_100px_rgba(0,0,0,0.8)] z-50' : ''}`}
         >
           <div className="flex justify-center mb-4 lg:hidden">
-            <div className="p-2 rounded-full bg-white/5 border border-white/10 text-slate-500">
-               <Move size={16} />
-            </div>
+            <div className="p-2 rounded-full bg-white/5 border border-white/10 text-slate-500"><Move size={16} /></div>
           </div>
 
-          <div className="mb-10 md:mb-14 text-center">
-            <div className="inline-flex items-center gap-4 mb-6 md:mb-8 pointer-events-none">
-                <Logo size={48} />
-                <span className="text-3xl font-black tracking-tighter">BurakAI</span>
-            </div>
-            <h2 className="text-4xl md:text-5xl font-black mb-4 tracking-tighter leading-tight pointer-events-none">{mode === 'login' ? t.login : t.signup}</h2>
-            <div className="flex flex-col items-center gap-2 pointer-events-none">
-                <p className="text-slate-500 text-[10px] font-black uppercase tracking-[0.3em] opacity-80 italic">{t.uplink}</p>
-                {isSupabaseConfigured && (
-                  <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20">
-                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></div>
-                    <span className="text-[9px] font-black text-emerald-500/80 uppercase tracking-widest">Supabase Linked</span>
-                  </div>
-                )}
-            </div>
+          <div className="mb-10 text-center">
+            <div className="inline-flex items-center gap-4 mb-6"><Logo size={48} /><span className="text-3xl font-black tracking-tighter">BurakAI</span></div>
+            <h2 className="text-4xl md:text-5xl font-black mb-4 tracking-tighter">{mode === 'login' ? t.login : t.signup}</h2>
           </div>
 
-          <form onSubmit={handleAuth} className="space-y-6 md:space-y-8">
+          <form onSubmit={handleAuth} className="space-y-6">
             <div className="space-y-3">
-              <label className="text-xs font-black text-slate-600 uppercase tracking-[0.3em] ml-4">{t.email}</label>
+              <label className="text-xs font-black text-slate-600 uppercase tracking-widest ml-4">{t.email}</label>
               <div className="relative group">
-                <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-blue-500 transition-colors" size={24} />
+                <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-blue-500" size={24} />
                 <input 
                   type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-[2rem] py-5 md:py-6 pl-16 pr-8 outline-none focus:border-blue-500 focus:ring-8 ring-blue-500/5 transition-all font-black text-xl"
+                  className="w-full bg-white/5 border border-white/10 rounded-[2rem] py-5 pl-16 pr-8 outline-none focus:border-blue-500 transition-all font-black text-xl"
                   placeholder="name@matrix.io"
                 />
               </div>
             </div>
 
             <div className="space-y-3">
-              <label className="text-xs font-black text-slate-600 uppercase tracking-[0.3em] ml-4">{t.password}</label>
+              <label className="text-xs font-black text-slate-600 uppercase tracking-widest ml-4">{t.password}</label>
               <div className="relative group">
-                <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-blue-500 transition-colors" size={24} />
+                <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-blue-500" size={24} />
                 <input 
                   type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-[2rem] py-5 md:py-6 pl-16 pr-8 outline-none focus:border-blue-500 focus:ring-8 ring-blue-500/5 transition-all font-black text-xl"
+                  className="w-full bg-white/5 border border-white/10 rounded-[2rem] py-5 pl-16 pr-8 outline-none focus:border-blue-500 transition-all font-black text-xl"
                   placeholder="••••••••"
                 />
               </div>
             </div>
 
             {error && (
-              <div className="p-4 md:p-6 bg-red-500/10 border border-red-500/20 rounded-3xl text-red-400 text-xs font-black flex flex-col gap-3 animate-in fade-in slide-in-from-top-2">
-                <div className="flex items-center gap-4">
-                  <ShieldAlert size={24} className="shrink-0" /> 
-                  <span className="leading-relaxed">{error}</span>
-                </div>
-                {originError && (
-                  <div className="mt-2 pt-3 border-t border-red-500/10 text-[10px] space-y-2 opacity-80">
-                    <p>Origin mismatch detected. To fix this, add the following URL to your Google Cloud Console "Authorized JavaScript origins":</p>
-                    <code className="block bg-black/40 p-2 rounded border border-white/5 font-mono select-all">{window.location.origin}</code>
-                    <a 
-                      href="https://console.cloud.google.com/apis/credentials" 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1 text-blue-400 hover:underline"
-                    >
-                      Open Google Cloud Console <ExternalLink size={10} />
-                    </a>
-                  </div>
-                )}
+              <div className="p-4 bg-red-500/10 border border-red-500/20 rounded-3xl text-red-400 text-xs font-black flex items-center gap-4">
+                <ShieldAlert size={24} className="shrink-0" /><span>{error}</span>
               </div>
             )}
 
             <button 
               type="submit" disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 text-white font-black py-5 md:py-6 rounded-[2rem] shadow-3xl active:scale-[0.98] transition-all disabled:opacity-50 flex items-center justify-center gap-6 text-xl md:text-2xl"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 text-white font-black py-5 rounded-[2rem] shadow-3xl transition-all disabled:opacity-50 flex items-center justify-center gap-4 text-xl"
             >
               {loading ? <Loader2 className="animate-spin" size={32} /> : mode === 'login' ? t.initiate : t.secure}
             </button>
           </form>
 
-          <div className="my-8 md:my-12 flex items-center gap-8">
-            <div className="h-px bg-white/10 flex-1"></div>
-            <span className="text-[10px] uppercase tracking-[0.4em] text-slate-600 font-black">{t.multiNode}</span>
-            <div className="h-px bg-white/10 flex-1"></div>
+          <div className="my-10 flex items-center gap-6"><div className="h-px bg-white/10 flex-1"></div><span className="text-[10px] uppercase tracking-widest text-slate-600 font-black">Multi-Node</span><div className="h-px bg-white/10 flex-1"></div></div>
+
+          <div className="grid grid-cols-2 gap-4 mb-8">
+            <button onClick={handleGoogleLogin} className="flex items-center justify-center gap-3 py-4 glass-panel rounded-2xl hover:bg-white/10 transition-all font-black text-[10px] uppercase tracking-widest border-white/5"><Chrome size={20} className="text-blue-400" /> Google</button>
+            <button className="flex items-center justify-center gap-3 py-4 glass-panel rounded-2xl hover:bg-white/10 transition-all font-black text-[10px] uppercase tracking-widest border-white/5"><Github size={20} /> GitHub</button>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 md:gap-6 mb-8 md:mb-12">
-            <button 
-              onClick={handleGoogleLogin} 
-              className="flex items-center justify-center gap-4 py-4 md:py-5 glass-panel rounded-2xl md:rounded-3xl hover:bg-white/10 transition-all active:scale-95 font-black text-xs uppercase tracking-[0.2em] border-white/5"
-            >
-              <Chrome size={22} className="text-blue-400" /> Google
-            </button>
-            <button className="flex items-center justify-center gap-4 py-4 md:py-5 glass-panel rounded-2xl md:rounded-3xl hover:bg-white/10 transition-all active:scale-95 font-black text-xs uppercase tracking-[0.2em] border-white/5">
-              <Github size={22} /> GitHub
-            </button>
-          </div>
-
-          <p className="text-center text-slate-500 text-[10px] md:text-xs font-black uppercase tracking-[0.2em]">
+          <p className="text-center text-slate-500 text-xs font-black uppercase tracking-widest">
             {mode === 'login' ? t.missing : t.found}
-            <button 
-              onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(null); setOriginError(false); }}
-              className="text-blue-500 hover:text-blue-400 ml-3 font-black underline decoration-blue-500/30 underline-offset-4"
-            >
-              {mode === 'login' ? t.join : t.access}
-            </button>
+            <button onClick={() => { setMode(mode === 'login' ? 'signup' : 'login'); setError(null); }} className="text-blue-500 ml-2 hover:underline underline-offset-4">{mode === 'login' ? t.join : t.access}</button>
           </p>
-          
-          <div className="mt-8 flex justify-center gap-6">
-            <button onClick={() => setLang(Language.EN)} className={`text-[10px] font-black tracking-widest px-2 py-1 transition-colors ${lang === Language.EN ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'}`}>EN</button>
-            <button onClick={() => setLang(Language.TR)} className={`text-[10px] font-black tracking-widest px-2 py-1 transition-colors ${lang === Language.TR ? 'text-blue-400' : 'text-slate-600 hover:text-slate-400'}`}>TR</button>
-          </div>
         </div>
       </div>
       
-      <style dangerouslySetInnerHTML={{ __html: `
-        @keyframes float {
-          0% { transform: translateY(0px) rotate(0deg); }
-          50% { transform: translateY(-20px) rotate(2deg); }
-          100% { transform: translateY(0px) rotate(0deg); }
-        }
-        .animate-float {
-          animation: float 6s ease-in-out infinite;
-        }
-      `}} />
+      <style dangerouslySetInnerHTML={{ __html: `@keyframes float { 0%, 100% { transform: translateY(0px) rotate(0deg); } 50% { transform: translateY(-20px) rotate(2deg); } } .animate-float { animation: float 6s ease-in-out infinite; }` }} />
     </div>
   );
 };

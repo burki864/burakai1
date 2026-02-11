@@ -7,8 +7,7 @@ export class GeminiService {
     history: Message[],
     settings: SettingsState,
     attachments: Attachment[],
-    onChunk: (text: string) => void,
-    onGrounding?: (urls: { title: string; uri: string }[]) => void
+    onChunk: (text: string) => void
   ): Promise<string> {
     try {
       const response = await fetch('/api/chat', {
@@ -38,16 +37,6 @@ export class GeminiService {
         if (done) break;
         
         const chunk = decoder.decode(value, { stream: true });
-        
-        // Handle metadata (Grounding) hidden in the stream or as first chunk
-        if (chunk.startsWith('METADATA:')) {
-            try {
-                const meta = JSON.parse(chunk.replace('METADATA:', ''));
-                if (meta.groundingUrls && onGrounding) onGrounding(meta.groundingUrls);
-            } catch(e) {}
-            continue;
-        }
-
         fullText += chunk;
         onChunk(chunk);
       }

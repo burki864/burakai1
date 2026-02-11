@@ -37,8 +37,11 @@ const App: React.FC = () => {
     setIsSidebarOpen(false);
   };
 
-  const isBanned = user?.isBanned || (user?.banExpiresAt && user.banExpiresAt > Date.now());
-  if (isBanned) return <BannedScreen lang={settings.language} expiresAt={user?.banExpiresAt} />;
+  // Fix: Access properties from the profile sub-object and parse the ban_until string into a timestamp
+  const banExpiresAt = user?.profile?.ban_until ? new Date(user.profile.ban_until).getTime() : undefined;
+  const isBanned = user?.profile?.banned || (banExpiresAt !== undefined && banExpiresAt > Date.now());
+  
+  if (isBanned) return <BannedScreen lang={settings.language} expiresAt={banExpiresAt} />;
   if (!user) return <Auth onLogin={setUser} />;
 
   const activeChat = chats.find(c => c.id === activeChatId);
@@ -65,7 +68,7 @@ const App: React.FC = () => {
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden" />}
 
       <main className="flex-1 flex flex-col relative overflow-hidden">
-        {view === 'chat' && <ChatView chat={activeChat} settings={settings} userPlan={user.plan} onUpdateMessages={(msgs) => activeChatId && setChats(p => p.map(c => c.id === activeChatId ? { ...c, messages: msgs } : c))} onNewChat={createNewChat} />}
+        {view === 'chat' && <ChatView chat={activeChat} settings={settings} user={user} onUpdateMessages={(msgs) => activeChatId && setChats(p => p.map(c => c.id === activeChatId ? { ...c, messages: msgs } : c))} onNewChat={createNewChat} />}
         {view === 'images' && <ImageGenerator images={images} onSaveImage={(img) => setImages(p => [img, ...p])} onDeleteImage={(id) => setImages(p => p.filter(i => i.id !== id))} settings={settings} />}
         {view === 'video-studio' && <VideoStudio settings={settings} userPlan={user.plan} />}
         {view === 'settings' && <Settings settings={settings} onUpdateSettings={setSettings} user={user} onLogout={handleLogout} />}
