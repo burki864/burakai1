@@ -13,7 +13,7 @@ export default async function handler(req: any, res: any) {
     if (!FAL_KEY) throw new Error('FAL_KEY is not configured on the server.');
 
     // Using fal.ai REST API for Pika Turbo
-    const response = await fetch('https://fal.run/fal-ai/pika-video/turbo', {
+    const response = await fetch('https://fal.run/fal-ai/pika-2.0/video', {
       method: 'POST',
       headers: {
         'Authorization': `Key ${FAL_KEY}`,
