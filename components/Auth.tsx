@@ -18,7 +18,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [originError, setOriginError] = useState(false);
   const [lang, setLang] = useState<Language>(Language.EN);
 
   // Draggable logic states
@@ -61,7 +60,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setLoading(true);
     try {
       const base64Url = response.credential.split('.')[1];
-      const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+      // Avoid using regex literals for replacement to prevent parsing errors
+      const base64 = base64Url.split('-').join('+').split('_').join('/');
       const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
           return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
       }).join(''));
@@ -109,7 +109,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     }
 
     try {
-      // Fix: Cast supabase.auth to any to resolve property access errors in this environment
       const auth = supabase.auth as any;
       const { data, error: supabaseError } = mode === 'login' 
         ? await auth.signInWithPassword({ email, password })
@@ -138,7 +137,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   const handleGoogleLogin = () => {
-    setOriginError(false);
     if ((window as any).google?.accounts?.id) {
       (window as any).google.accounts.id.prompt((notification: any) => {
         if (notification.isNotDisplayed()) {
@@ -175,8 +173,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   return (
     <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#010409] text-white overflow-y-auto custom-scrollbar relative">
       <div className="fixed inset-0 pointer-events-none">
-        <div className="absolute top-[20%] right-[15%] w-[800px] h-[800px] bg-purple-600/10 rounded-full blur-[150px] animate-pulse duration-[8s]"></div>
-        <div className="absolute bottom-[20%] left-[15%] w-[600px] h-[600px] bg-blue-500/10 rounded-full blur-[130px] animate-pulse duration-[10s]"></div>
+        <div className="absolute top-[20%] right-[15%] w-[800px] h-[800px] bg-purple-600 opacity-10 rounded-full blur-[150px] animate-pulse duration-[8s]"></div>
+        <div className="absolute bottom-[20%] left-[15%] w-[600px] h-[600px] bg-blue-500 opacity-10 rounded-full blur-[130px] animate-pulse duration-[10s]"></div>
       </div>
 
       <div className="w-full lg:flex-1 min-h-[40vh] lg:min-h-screen flex relative items-center justify-center border-b lg:border-b-0 lg:border-r border-white/5 bg-slate-950/20 px-8 py-12 lg:p-0">
