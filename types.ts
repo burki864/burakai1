@@ -1,4 +1,18 @@
 
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  provider: 'google' | 'email';
+  createdAt: string;
+  plan: 'free' | 'pro';
+  isBanned?: boolean;
+  banExpiresAt?: number;
+}
+
+export type ThemeType = 'default' | 'rain' | 'desert' | 'nebula' | 'cyberpunk';
+export type AppView = 'chat' | 'images' | 'video-studio' | 'settings';
+
 export enum Personality {
   Normal = 'normal',
   Funny = 'funny',
@@ -10,12 +24,11 @@ export enum Language {
   EN = 'en'
 }
 
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  provider: 'email' | 'google';
-  createdAt: string;
+export interface Attachment {
+  type: 'image' | 'file';
+  data: string;
+  mimeType: string;
+  name?: string;
 }
 
 export interface Message {
@@ -23,7 +36,12 @@ export interface Message {
   role: 'user' | 'assistant';
   content: string;
   timestamp: number;
+  attachments?: Attachment[];
+  groundingUrls?: { title: string; uri: string }[];
+  videoUrl?: string;
   imageUrl?: string;
+  isGenerating?: boolean;
+  generationType?: 'image' | 'video';
 }
 
 export interface ChatSession {
@@ -40,6 +58,8 @@ export interface SettingsState {
   personality: Personality;
   creativity: number;
   systemPrompt: string;
+  searchEnabled: boolean;
+  activeTheme: ThemeType;
 }
 
 export interface ImageGeneration {

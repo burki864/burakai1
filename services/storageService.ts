@@ -6,7 +6,8 @@ const KEYS = {
   USER: 'burakai_user',
   CHATS: 'burakai_chats',
   IMAGES: 'burakai_images',
-  SETTINGS: 'burakai_settings'
+  SETTINGS: 'burakai_settings',
+  LAST_VIDEO: 'burakai_last_video'
 };
 
 export const storageService = {
@@ -38,5 +39,12 @@ export const storageService = {
   },
   saveSettings: (settings: SettingsState) => {
     localStorage.setItem(KEYS.SETTINGS, JSON.stringify(settings));
+  },
+  getLastVideoTimestamp: (): number => {
+    const data = localStorage.getItem(KEYS.LAST_VIDEO);
+    return data ? parseInt(data, 10) : 0;
+  },
+  setLastVideoTimestamp: (ts: number) => {
+    localStorage.setItem(KEYS.LAST_VIDEO, ts.toString());
   }
 };

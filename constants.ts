@@ -7,18 +7,20 @@ export const DEFAULT_SETTINGS: SettingsState = {
   showTimestamps: true,
   personality: Personality.Normal,
   creativity: 0.7,
-  systemPrompt: 'You are BurakAI, a highly intelligent and helpful AI assistant.'
+  systemPrompt: 'You are BurakAI, an advanced AI with real-time web access and creative vision.',
+  searchEnabled: false,
+  activeTheme: 'default'
 };
 
 export const MODELS = {
-  text: 'gemini-3-flash-preview',
-  image: 'gemini-2.5-flash-image'
+  text: 'gemini-3-pro-preview',
+  image: 'gemini-2.5-flash-image',
+  video: 'veo-3.1-fast-generate-preview'
 };
 
-export const SYSTEM_PROMPTS: Record<Personality, string> = {
-  [Personality.Normal]: 'Provide clear, helpful, and professional answers.',
-  [Personality.Funny]: 'Be witty, sarcastic, and humorous while still being helpful.',
-  [Personality.Formal]: 'Use highly formal language, addressing the user with respect and providing detailed structured analysis.'
+export const INTENT_KEYWORDS = {
+  image: ['görsel oluştur', 'resim yap', 'create image', 'generate image', 'draw', 'çiz'],
+  video: ['video yap', 'video oluştur', 'create video', 'generate video', 'make video']
 };
 
 export const TRANSLATIONS: Record<Language, any> = {
@@ -26,138 +28,79 @@ export const TRANSLATIONS: Record<Language, any> = {
     nav: {
       chat: 'Neural Chat',
       images: 'Image Studio',
+      videoStudio: 'Video Studio',
       settings: 'Parameters',
-      history: 'Active History',
-      newChat: 'New Transmission',
+      history: 'History',
+      newChat: 'New Link',
       proCore: 'Pro Core'
     },
     chat: {
       welcome: 'BurakAI Pro',
-      subtitle: 'Next-gen reasoning engine powered by Gemini 3 Flash. Built for precision and scale.',
-      init: 'Initialize Link',
-      placeholder: 'Transmit signal to Neural Core...',
-      uplink: 'Encrypted Uplink Active',
-      node: 'Node: Gemini 3 Pro',
-      typing: 'Synthesizing response...',
-      scrollDown: 'Scroll to bottom',
+      subtitle: 'Real-time Web Access • Creative Vision • Neural Synthesis',
+      init: 'Initiate Link',
+      placeholder: 'Ask anything or use "/" for tools...',
+      searchOn: 'Web Search Active',
+      searchOff: 'Internal Logic Only',
+      grounding: 'Sources',
+      camera: 'Capture Node',
+      upload: 'Attach Data',
+      generating: 'Generating Art...',
+      video: 'Synthesize Video',
+      rateLimit: 'Wait 60s between video links.',
       features: [
-        { title: 'Cloud Logic', desc: 'Secure history via Supabase backend' },
-        { title: 'Neural Core', desc: 'No-mock native SDK orchestration' },
-        { title: 'Flash Stream', desc: 'Ultra-low latency inference speed' }
+        { title: 'Global Search', desc: 'Real-time grounding via Google Search' },
+        { title: 'Multi-Modal', desc: 'Analyze files and images instantly' },
+        { title: 'Video Synth', desc: 'Generate 1080p neural clips' }
       ]
     },
-    images: {
-      title: 'Image Studio',
-      subtitle: 'Neural engine • Gemini 2.5 Flash',
-      placeholder: "Describe a cinematic masterpiece... e.g., 'Cyberpunk samurai in neon rain, hyper-realistic, 8k'",
-      generate: 'Manifest',
-      generating: 'Synthesizing...',
-      empty: 'The Canvas is Empty',
-      emptySub: 'Neural pathways awaiting instruction'
+    video: {
+      title: 'Cinematic Core',
+      subtitle: 'Neural Video Engine • 1 clip / min',
+      placeholder: 'Direct the neural engine...',
+      generate: 'Synthesize',
+      empty: 'No Clips Synthesized',
+      rateLimit: 'Cooling down... Wait 60s.'
     },
-    settings: {
-      profile: 'Profile',
-      profileSub: 'Manage your account information',
-      aiEngine: 'AI Engine',
-      aiEngineSub: 'Configure how BurakAI responds to you',
-      personality: 'AI Personality',
-      personalitySub: 'Choose the behavioral style of the AI',
-      creativity: 'Creativity (Temperature)',
-      creativitySub: 'Higher values produce more imaginative results',
-      systemPrompt: 'System Prompt',
-      preferences: 'Preferences',
-      preferencesSub: 'Interface and localization',
-      language: 'Language',
-      appearance: 'Appearance',
-      appearanceSub: 'Dark mode provides a better experience',
-      timestamps: 'Show Timestamps',
-      timestampsSub: 'Display the time for each message',
-      signOut: 'Sign Out',
-      deleteAcc: 'Delete Account',
-      version: 'BurakAI Platform v1.0.4 • © 2025 BurakAI Technologies'
-    },
-    auth: {
-      login: 'System Login',
-      signup: 'Register Core',
-      uplink: 'Neural Uplink Authorized',
-      email: 'Terminal Email',
-      password: 'Neural Cipher',
-      initiate: 'Initiate Link',
-      secure: 'Secure Core',
-      missing: 'Identity Missing?',
-      found: 'Link Found?',
-      join: 'Join Neural Net',
-      access: 'Access System',
-      multiNode: 'Multi-Node'
-    }
+    images: { title: 'Neural Synthesis', subtitle: 'Artificially Imagined Reality', placeholder: 'Describe vision...', generate: 'Generate', generating: 'Synthesizing...', empty: 'No Art Found', emptySub: 'Initiate synthesis' },
+    auth: { login: 'Access Core', signup: 'Register Core', uplink: 'Secure Uplink', email: 'Identifier', password: 'Key', initiate: 'Initiate', secure: 'Secure', multiNode: 'Multi-Node', missing: 'No id?', join: 'Join', found: 'Id found?', access: 'Access' },
+    banned: { title: 'PURGED', desc: 'Access restricted', device: 'Blocked', expires: 'Ends in: ', permanent: 'Permanent' },
+    settings: { profile: 'Identity', profileSub: 'Neural footprint', theme: 'Environment', themeSub: 'Atmosphere', aiEngine: 'Engine', aiEngineSub: 'Model parameters', signOut: 'Sever Link', version: 'BurakAI v3.5.0-ultra' }
   },
   [Language.TR]: {
     nav: {
       chat: 'Nöral Sohbet',
-      images: 'Görüntü Stüdyosu',
-      settings: 'Parametreler',
-      history: 'Aktif Geçmiş',
-      newChat: 'Yeni İletim',
+      images: 'Resim Stüdyosu',
+      videoStudio: 'Video Stüdyosu',
+      settings: 'Ayarlar',
+      history: 'Geçmiş',
+      newChat: 'Yeni Bağlantı',
       proCore: 'Pro Çekirdek'
     },
     chat: {
       welcome: 'BurakAI Pro',
-      subtitle: 'Gemini 3 Flash tarafından desteklenen yeni nesil muhakeme motoru. Hassasiyet ve ölçek için tasarlandı.',
+      subtitle: 'Gerçek Zamanlı Web Erişimi • Yaratıcı Vizyon',
       init: 'Bağlantıyı Başlat',
-      placeholder: 'Nöral Çekirdeğe sinyal gönder...',
-      uplink: 'Şifreli Bağlantı Aktif',
-      node: 'Düğüm: Gemini 3 Pro',
-      typing: 'Yanıt sentezleniyor...',
-      scrollDown: 'Aşağı kaydır',
-      features: [
-        { title: 'Bulut Mantığı', desc: 'Supabase altyapısı ile güvenli geçmiş' },
-        { title: 'Nöral Çekirdek', desc: 'Yerel SDK orkestrasyonu' },
-        { title: 'Flash Akışı', desc: 'Ultra düşük gecikmeli çıkarım hızı' }
-      ]
+      placeholder: 'Bir şey sorun veya "/" ile araçları görün...',
+      searchOn: 'Web Araması Aktif',
+      searchOff: 'Sadece Dahili Mantık',
+      grounding: 'Kaynaklar',
+      camera: 'Görüntü Yakala',
+      upload: 'Veri Ekle',
+      video: 'Video Sentezle',
+      generating: 'Sanat Oluşturuluyor...',
+      rateLimit: 'Videolar arası 60 saniye bekleyin.'
     },
-    images: {
-      title: 'Görüntü Stüdyosu',
-      subtitle: 'Nöral motor • Gemini 2.5 Flash',
-      placeholder: "Sinematik bir şaheser tanımlayın... örn: 'Neon yağmurunda siberpunk samuray, hiper-gerçekçi, 8k'",
-      generate: 'Oluştur',
-      generating: 'Sentezleniyor...',
-      empty: 'Tuval Boş',
-      emptySub: 'Nöral yollar talimat bekliyor'
+    video: {
+      title: 'Sinematik Çekirdek',
+      subtitle: 'Nöral Video Motoru • 1 klip / dk',
+      placeholder: 'Nöral motoru yönlendirin...',
+      generate: 'Sentezle',
+      empty: 'Sentezlenmiş Klip Yok',
+      rateLimit: 'Soğuma süresi... 60 saniye bekleyin.'
     },
-    settings: {
-      profile: 'Profil',
-      profileSub: 'Hesap bilgilerinizi yönetin',
-      aiEngine: 'AI Motoru',
-      aiEngineSub: "BurakAI'nın nasıl yanıt vereceğini yapılandırın",
-      personality: 'AI Kişiliği',
-      personalitySub: "AI'nın davranış stilini seçin",
-      creativity: 'Yaratıcılık (Sıcaklık)',
-      creativitySub: 'Daha yüksek değerler daha yaratıcı sonuçlar üretir',
-      systemPrompt: 'Sistem Komutu',
-      preferences: 'Tercihler',
-      preferencesSub: 'Arayüz ve yerelleştirme',
-      language: 'Dil',
-      appearance: 'Görünüm',
-      appearanceSub: 'Karanlık mod daha iyi bir deneyim sunar',
-      timestamps: 'Zaman Damgaları',
-      timestampsSub: 'Her mesaj için zamanı görüntüleyin',
-      signOut: 'Oturumu Kapat',
-      deleteAcc: 'Hesabı Sil',
-      version: 'BurakAI Platformu v1.0.4 • © 2025 BurakAI Teknolojileri'
-    },
-    auth: {
-      login: 'Sistem Girişi',
-      signup: 'Çekirdek Kaydı',
-      uplink: 'Nöral Bağlantı Yetkilendirildi',
-      email: 'Terminal E-posta',
-      password: 'Nöral Şifre',
-      initiate: 'Bağlantıyı Başlat',
-      secure: 'Çekirdeği Güvenceye Al',
-      missing: 'Kimlik Eksik mi?',
-      found: 'Bağlantı Bulundu mu?',
-      join: 'Nöral Ağa Katıl',
-      access: 'Sisteme Eriş',
-      multiNode: 'Çoklu Düğüm'
-    }
+    images: { title: 'Nöral Sentez', subtitle: 'Yapay Hayal Gücü', placeholder: 'Vizyonunuz...', generate: 'Oluştur', generating: 'Sentezleniyor...', empty: 'Sanat Yok', emptySub: 'Sentezi başlat' },
+    auth: { login: 'Giriş', signup: 'Kayıt', uplink: 'Güvenli Bağlantı', email: 'E-posta', password: 'Şifre', initiate: 'Başlat', secure: 'Güvenli', multiNode: 'Çoklu Düğüm', missing: 'Hesap yok mu?', join: 'Kayıt ol', found: 'Hesap var mı?', access: 'Giriş yap' },
+    banned: { title: 'ENGELLEDİNİZ', desc: 'Erişim kısıtlandı', device: 'Cihaz Engellendi', expires: 'Bitiş: ', permanent: 'Kalıcı' },
+    settings: { profile: 'Kimlik', theme: 'Çevresel Geçersiz Kılma', aiEngine: 'Bilişsel Motor', signOut: 'Bağlantıyı Kes', version: 'BurakAI v3.5.0-ultra' }
   }
 };

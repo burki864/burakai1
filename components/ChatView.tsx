@@ -1,262 +1,234 @@
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, User as UserIcon, Bot, Copy, RefreshCw, Terminal, Check, Info, Plus, MessageSquare, Sparkles, Cpu, AlertCircle, Loader2, ArrowDown, X } from 'lucide-react';
-import { ChatSession, Message, SettingsState } from '../types';
+import { 
+  Send, User as UserIcon, Plus, Loader2, AlertCircle, 
+  Search, Globe, Camera, Image as ImageIcon, Paperclip, 
+  X, ExternalLink, Zap, Video, FileText
+} from 'lucide-react';
+import { ChatSession, Message, SettingsState, Attachment } from '../types';
 import { geminiService } from '../services/geminiService';
-import { dbService } from '../services/supabase';
-import { TRANSLATIONS } from '../constants';
+import { storageService } from '../services/storageService';
+import { TRANSLATIONS, INTENT_KEYWORDS } from '../constants';
 import Logo from './Logo';
-
-interface Toast {
-  id: string;
-  message: string;
-}
+import GenerationAnimation from './GenerationAnimation';
 
 interface ChatViewProps {
   chat?: ChatSession;
   settings: SettingsState;
+  userPlan?: 'free' | 'pro';
   onUpdateMessages: (messages: Message[]) => void;
   onNewChat: () => void;
 }
 
-const ChatView: React.FC<ChatViewProps> = ({
-  chat,
-  settings,
-  onUpdateMessages,
-  onNewChat
-}) => {
+const ChatView: React.FC<ChatViewProps> = ({ chat, settings, userPlan = 'free', onUpdateMessages, onNewChat }) => {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [streamingMessage, setStreamingMessage] = useState('');
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [showScrollButton, setShowScrollButton] = useState(false);
-  const [toasts, setToasts] = useState<Toast[]>([]);
+  const [searchEnabled, setSearchEnabled] = useState(settings.searchEnabled);
   const scrollRef = useRef<HTMLDivElement>(null);
-  
-  // Anti-spam and Profanity references
-  const lastMessageRef = useRef({ text: '', count: 0 });
-  const profanityList = ['aptal', 'salak', 'gerizekalı', 'mal', 'küfür'];
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [showCamera, setShowCamera] = useState(false);
+  const [isDraggingFile, setIsDraggingFile] = useState(false);
 
   useEffect(() => {
-    if (scrollRef.current && !showScrollButton) {
-      const scrollHeight = scrollRef.current.scrollHeight;
-      scrollRef.current.scrollTo({ 
-        top: scrollHeight, 
-        behavior: isTyping ? 'auto' : 'smooth' 
-      });
+    if (scrollRef.current) scrollRef.current.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
+  }, [chat?.messages, streamingMessage]);
+
+  const detectIntent = (text: string): 'image' | 'video' | 'text' => {
+    const lower = text.toLowerCase();
+    if (INTENT_KEYWORDS.video.some(k => lower.includes(k))) return 'video';
+    if (INTENT_KEYWORDS.image.some(k => lower.includes(k))) return 'image';
+    return 'text';
+  };
+
+  const checkVideoRateLimit = (): boolean => {
+    const lastTs = storageService.getLastVideoTimestamp();
+    const now = Date.now();
+    if (now - lastTs < 60000) {
+      const remaining = Math.ceil((60000 - (now - lastTs)) / 1000);
+      setError(`${TRANSLATIONS[settings.language].chat.rateLimit} (${remaining}s)`);
+      return false;
     }
-  }, [chat?.messages, streamingMessage, isTyping]);
-
-  const showToast = (message: string) => {
-    const id = Date.now().toString();
-    setToasts(prev => [...prev, { id, message }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 3000);
+    return true;
   };
 
-  const handleScroll = () => {
-    if (!scrollRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-    setShowScrollButton(scrollHeight - scrollTop - clientHeight > 400);
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      if (videoRef.current) { videoRef.current.srcObject = stream; setShowCamera(true); }
+    } catch (err) { setError("Vision Restricted."); }
   };
 
-  const scrollToBottom = () => {
-    scrollRef.current?.scrollTo({ 
-      top: scrollRef.current.scrollHeight, 
-      behavior: 'smooth' 
-    });
-    setShowScrollButton(false);
+  const stopCamera = () => {
+    if (videoRef.current?.srcObject) (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
+    setShowCamera(false);
   };
 
   const handleSend = async () => {
     const cleanInput = input.trim();
-    if (!cleanInput || isTyping) return;
+    if (!cleanInput && attachments.length === 0 || isTyping) return;
 
-    // 1. Profanity Filter
-    if (profanityList.some(word => cleanInput.toLowerCase().includes(word))) {
-      showToast('⚠️ Küfür kullanamazsın!');
-      return;
-    }
-
-    // 2. Spam Filter (Block after 3 consecutive identical messages)
-    if (cleanInput === lastMessageRef.current.text) {
-      lastMessageRef.current.count++;
-      if (lastMessageRef.current.count > 3) {
-        showToast('⚠️ Spam yapamazsın!');
-        return;
-      }
-    } else {
-      lastMessageRef.current.text = cleanInput;
-      lastMessageRef.current.count = 1;
-    }
-
-    const userMsg: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: cleanInput,
-      timestamp: Date.now()
-    };
-
-    const currentMessages = chat?.messages || [];
+    const intent = detectIntent(cleanInput);
     
-    // 3. Message History Limit (Max 100)
-    const newMessages = [...currentMessages, userMsg].slice(-100);
-    
-    if (!chat) {
-        onNewChat();
-        return;
-    }
+    // Check video limit regardless of plan per new requirement
+    if (intent === 'video' && !checkVideoRateLimit()) return;
 
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: cleanInput, timestamp: Date.now(), attachments: [...attachments] };
+    const newMessages = [...(chat?.messages || []), userMsg];
+    
+    if (!chat) return onNewChat();
     onUpdateMessages(newMessages);
     setInput('');
+    setAttachments([]);
     setIsTyping(true);
-    setStreamingMessage('');
     setError(null);
 
-    try {
-      dbService.saveMessage('current-user', chat.id, 'user', userMsg.content).catch(() => {});
-
-      const fullResponse = await geminiService.generateTextStream(
-        userMsg.content,
-        newMessages,
-        settings,
-        (chunk) => setStreamingMessage(prev => prev + chunk)
-      );
-
-      const assistantMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: fullResponse,
-        timestamp: Date.now()
-      };
-
-      dbService.saveMessage('current-user', chat.id, 'assistant', assistantMsg.content).catch(() => {});
-      
-      // Keep assistant response in 100 msg limit
-      onUpdateMessages([...newMessages, assistantMsg].slice(-100));
-    } catch (err: any) {
-      setError(err.message || "Neural connection failed.");
-    } finally {
+    if (intent === 'image') {
+      const genMsg: Message = { id: 'gen-'+Date.now(), role: 'assistant', content: '', timestamp: Date.now(), isGenerating: true, generationType: 'image' };
+      onUpdateMessages([...newMessages, genMsg]);
+      try {
+        const url = await geminiService.generateImage(cleanInput);
+        onUpdateMessages([...newMessages, { ...genMsg, isGenerating: false, imageUrl: url }]);
+      } catch (e: any) { setError(e.message); onUpdateMessages(newMessages); }
       setIsTyping(false);
-      setStreamingMessage('');
+    } else if (intent === 'video') {
+      const genMsg: Message = { id: 'gen-v-'+Date.now(), role: 'assistant', content: '', timestamp: Date.now(), isGenerating: true, generationType: 'video' };
+      onUpdateMessages([...newMessages, genMsg]);
+      try {
+        storageService.setLastVideoTimestamp(Date.now());
+        const res = await fetch('/api/video', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ prompt: cleanInput }) });
+        const data = await res.json();
+        if (data.error) throw new Error(data.error);
+        onUpdateMessages([...newMessages, { ...genMsg, isGenerating: false, videoUrl: data.videoUrl }]);
+      } catch (e: any) { setError(e.message); onUpdateMessages(newMessages); }
+      setIsTyping(false);
+    } else {
+      try {
+        let groundingUrls: any[] = [];
+        const fullResponse = await geminiService.generateTextStream(cleanInput, newMessages, { ...settings, searchEnabled }, attachments, (chunk) => setStreamingMessage(prev => prev + chunk), (urls) => { groundingUrls = urls; });
+        onUpdateMessages([...newMessages, { id: Date.now().toString(), role: 'assistant', content: fullResponse, timestamp: Date.now(), groundingUrls: groundingUrls.length > 0 ? groundingUrls : undefined }]);
+      } catch (err: any) { setError(err.message); } finally { setIsTyping(false); setStreamingMessage(''); }
     }
   };
 
   const t = TRANSLATIONS[settings.language].chat;
 
-  if (!chat) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-[#010409] overflow-y-auto custom-scrollbar">
-        <div className="relative mb-20 group">
-            <div className="absolute inset-0 bg-blue-600/20 blur-[100px] rounded-full animate-glow"></div>
-            <Logo size={240} className="animate-float" />
-        </div>
-        <h2 className="text-8xl font-black mb-6 tracking-tighter">{t.welcome.split(' ')[0]} <span className="gradient-text">{t.welcome.split(' ')[1]}</span></h2>
-        <p className="text-slate-500 max-w-2xl mb-16 text-2xl font-bold leading-relaxed opacity-90 tracking-tight">
-            {t.subtitle}
-        </p>
-        <button 
-          onClick={onNewChat}
-          className="px-16 py-7 rounded-[2.5rem] bg-blue-600 hover:bg-blue-500 text-white font-black transition-all shadow-[0_0_80px_rgba(37,99,235,0.4)] active:scale-[0.98] flex items-center gap-6 text-3xl"
-        >
-          <Plus size={40} /> {t.init}
-        </button>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[#010409] relative">
-      <header className="px-10 py-7 flex items-center justify-between glass-panel sticky top-6 z-20 mx-8 mt-6 rounded-[2.5rem] border-white/10 shadow-3xl">
-        <div className="flex items-center gap-6">
-          <Logo size={54} />
+    <div className={`flex-1 flex flex-col min-h-0 relative overflow-hidden transition-all ${isDraggingFile ? 'bg-blue-600/5 ring-2 ring-blue-500/20' : 'bg-transparent'}`}
+      onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }} onDragLeave={() => setIsDraggingFile(false)}
+      onDrop={(e) => { e.preventDefault(); setIsDraggingFile(false); /* Handle Drop Logic */ }}>
+      
+      <header className="px-4 py-3 md:px-10 md:py-6 flex items-center justify-between glass-panel sticky top-0 z-20 border-b border-white/10">
+        <div className="flex items-center gap-3 md:gap-4">
+          <Logo size={32} className="md:w-12 md:h-12" />
           <div>
-            <h3 className="font-black text-2xl tracking-tighter leading-none">{chat.title}</h3>
-            <div className="flex items-center gap-2 mt-2">
-                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                <p className="text-[10px] text-slate-600 font-black uppercase tracking-[0.3em]">{t.uplink}</p>
+            <h3 className="font-black text-sm md:text-2xl tracking-tighter leading-none">{chat?.title || t.welcome}</h3>
+            <div className="flex items-center gap-2 mt-1">
+               <span className="text-[8px] md:text-[10px] text-slate-500 font-bold uppercase tracking-widest">{searchEnabled ? t.searchOn : t.searchOff}</span>
+               <span className="bg-blue-600/20 text-blue-400 text-[6px] md:text-[8px] font-black px-1.5 rounded-sm uppercase">Neural Core</span>
             </div>
           </div>
         </div>
+        <button onClick={() => setSearchEnabled(!searchEnabled)} className={`p-1.5 md:p-3 rounded-lg transition-all flex items-center gap-2 font-black text-[8px] md:text-[10px] uppercase tracking-widest ${searchEnabled ? 'bg-blue-600/20 text-blue-400 border border-blue-500/50' : 'bg-slate-900 text-slate-500'}`}>
+            <Search size={14} className="md:w-4 md:h-4" /> <span className="hidden sm:inline">Search</span>
+        </button>
       </header>
 
-      <div 
-        ref={scrollRef} 
-        onScroll={handleScroll}
-        className="flex-1 overflow-y-auto px-10 py-16 space-y-16 custom-scrollbar relative"
-      >
-        {chat.messages.map((msg) => (
-          <div key={msg.id} className={`flex gap-8 max-w-6xl mx-auto ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-            <div className={`w-16 h-16 rounded-3xl flex items-center justify-center flex-shrink-0 shadow-3xl border border-white/10 ${msg.role === 'user' ? 'bg-gradient-to-br from-blue-600 to-indigo-700 text-white' : 'glass-panel text-blue-400'}`}>
-              {msg.role === 'user' ? <UserIcon size={32} /> : <Logo size={36} />}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 md:px-10 py-6 md:py-16 space-y-8 md:space-y-12 custom-scrollbar">
+        {!chat && (
+            <div className="max-w-4xl mx-auto text-center space-y-6 md:space-y-8 py-8 md:py-24">
+                <Logo size={100} className="mx-auto md:w-48 md:h-48" />
+                <h2 className="text-3xl md:text-8xl font-black tracking-tighter">{t.welcome}</h2>
+                <p className="text-base md:text-3xl text-slate-500 font-bold px-4">{t.subtitle}</p>
+                <button onClick={onNewChat} className="px-8 py-4 md:px-12 md:py-5 rounded-2xl md:rounded-[2.5rem] bg-blue-600 text-white font-black text-lg md:text-xl shadow-2xl hover:scale-105 active:scale-95 transition-transform">
+                    {t.init}
+                </button>
             </div>
-            <div className={`flex flex-col space-y-4 max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`relative group p-10 rounded-[3rem] transition-all leading-relaxed ${msg.role === 'user' ? 'bg-blue-600 text-white border-white/10 shadow-xl' : 'glass-panel border-white/5 shadow-inner'}`}>
-                <div className="prose prose-invert max-w-none text-xl font-bold whitespace-pre-wrap tracking-tight leading-relaxed">
+        )}
+
+        {chat?.messages.map((msg) => (
+          <div key={msg.id} className={`flex gap-3 md:gap-8 max-w-5xl mx-auto animate-in slide-in-from-bottom-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+            <div className={`w-8 h-8 md:w-16 md:h-16 rounded-xl md:rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'glass-panel text-blue-400'}`}>
+              {msg.role === 'user' ? <UserIcon size={14} className="md:w-8 md:h-8" /> : <Logo size={20} className="md:w-9 md:h-9" />}
+            </div>
+            <div className={`flex flex-col space-y-2 md:space-y-4 max-w-[85%] md:max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+              {msg.isGenerating && <GenerationAnimation type={msg.generationType || 'image'} />}
+              
+              {msg.imageUrl && <img src={msg.imageUrl} className="w-full max-w-[400px] rounded-2xl md:rounded-[2.5rem] shadow-2xl border border-white/10" />}
+              
+              {msg.videoUrl && (
+                <video controls autoPlay loop className="w-full max-w-[600px] rounded-2xl md:rounded-[2.5rem] shadow-2xl border border-white/10">
+                   <source src={msg.videoUrl} type="video/mp4" />
+                </video>
+              )}
+              
+              {msg.content && (
+                <div className={`p-4 md:p-10 rounded-2xl md:rounded-[3rem] text-sm md:text-2xl font-bold leading-relaxed shadow-xl ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'glass-panel border-white/5'}`}>
                   {msg.content}
                 </div>
-              </div>
+              )}
+
+              {msg.groundingUrls && (
+                <div className="flex flex-wrap gap-2 pt-2">
+                    {msg.groundingUrls.map((url, i) => (
+                        <a key={i} href={url.uri} target="_blank" className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-black border border-blue-500/20 hover:bg-blue-500/20 transition-all">
+                            <Globe size={12} /> {url.title} <ExternalLink size={10} />
+                        </a>
+                    ))}
+                </div>
+              )}
             </div>
           </div>
         ))}
 
-        {isTyping && streamingMessage && (
-          <div className="flex gap-8 max-w-6xl mx-auto">
-            <div className="w-16 h-16 rounded-3xl glass-panel flex items-center justify-center flex-shrink-0 text-blue-400 shadow-3xl border-white/10 animate-pulse">
-              <Logo size={36} />
+        {streamingMessage && (
+            <div className="flex gap-3 md:gap-8 max-w-5xl mx-auto">
+                <div className="w-8 h-8 md:w-16 md:h-16 rounded-xl glass-panel flex items-center justify-center flex-shrink-0"><Logo size={18} /></div>
+                <div className="p-4 md:p-10 rounded-2xl md:rounded-[3rem] glass-panel text-sm md:text-2xl font-bold flex-1 shadow-xl">
+                  {streamingMessage}
+                  <span className="inline-block w-2 h-5 ml-1 bg-blue-500 animate-pulse"></span>
+                </div>
             </div>
-            <div className="p-10 rounded-[3rem] glass-panel border-white/5 max-w-[80%] shadow-inner relative overflow-hidden">
-              <div className="prose prose-invert max-w-none text-xl font-bold leading-relaxed whitespace-pre-wrap tracking-tight">
-                {streamingMessage}
-                <span className="inline-block w-3 h-8 bg-blue-500 ml-3 animate-pulse rounded-full align-middle" />
-              </div>
-            </div>
-          </div>
-        )}
-
-        {error && (
-          <div className="max-w-3xl mx-auto p-8 glass-panel border-red-500/40 rounded-3xl flex items-center gap-6 text-red-400">
-            <AlertCircle size={32} />
-            <p className="font-black text-lg uppercase tracking-widest">{error}</p>
-          </div>
         )}
       </div>
 
-      <div className="p-10 md:p-16 sticky bottom-0 z-10 bg-gradient-to-t from-[#010409] via-[#010409]/95 to-transparent">
-        <div className="max-w-6xl mx-auto relative group">
-          <div className="relative glass-panel rounded-[3.5rem] border-white/10 p-4 flex items-end gap-6 shadow-2xl focus-within:border-blue-500/50 transition-all">
-            <textarea 
-              rows={1} value={input}
-              onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = `${Math.min(e.target.scrollHeight, 400)}px`; }}
-              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              placeholder={t.placeholder}
-              className="flex-1 bg-transparent border-none focus:ring-0 p-6 text-white font-black resize-none text-2xl placeholder-slate-700 custom-scrollbar leading-relaxed"
-            />
-            <button 
-              onClick={handleSend} disabled={!input.trim() || isTyping}
-              className={`w-24 h-24 rounded-[2.5rem] transition-all flex items-center justify-center flex-shrink-0 mb-2 ${!input.trim() || isTyping ? 'bg-slate-900 text-slate-700' : 'bg-gradient-to-br from-blue-600 to-indigo-800 text-white shadow-3xl active:scale-90'}`}
-            >
-              {isTyping ? <Loader2 className="animate-spin" size={44} /> : <Send size={44} />}
-            </button>
-          </div>
+      <div className="p-3 md:p-10 bg-gradient-to-t from-slate-950 to-transparent">
+        <div className="max-w-4xl mx-auto space-y-3">
+            {error && <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-black flex items-center gap-2 animate-in fade-in slide-in-from-top-1"><AlertCircle size={14} /> {error}</div>}
+            
+            <div className="glass-panel rounded-2xl md:rounded-[3rem] border-white/10 p-2 md:p-4 shadow-3xl">
+                <textarea rows={1} value={input}
+                    onChange={(e) => { setInput(e.target.value); e.target.style.height = 'auto'; e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`; }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                    placeholder={t.placeholder}
+                    className="w-full bg-transparent border-none focus:ring-0 p-3 md:p-6 text-white font-bold text-base md:text-3xl placeholder-slate-700 resize-none" />
+                <div className="flex items-center justify-between px-2 md:px-6 py-1 md:py-2 border-t border-white/5">
+                    <div className="flex items-center gap-1">
+                        <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-500 hover:text-blue-400 transition-colors"><Paperclip size={18} className="md:w-6 md:h-6" /></button>
+                        <button onClick={startCamera} className="p-2 text-slate-500 hover:text-purple-400 transition-colors"><Camera size={18} className="md:w-6 md:h-6" /></button>
+                    </div>
+                    <button onClick={handleSend} disabled={(!input.trim() && attachments.length === 0) || isTyping}
+                        className={`w-10 h-10 md:w-16 md:h-16 rounded-xl md:rounded-3xl transition-all flex items-center justify-center ${(!input.trim() && attachments.length === 0) || isTyping ? 'bg-slate-900 text-slate-600' : 'bg-blue-600 text-white shadow-3xl hover:scale-105 active:scale-95'}`}>
+                        {isTyping ? <Loader2 size={18} className="animate-spin" /> : <Send size={18} className="md:w-8 md:h-8" />}
+                    </button>
+                </div>
+            </div>
         </div>
       </div>
 
-      {/* Toast Notification Container */}
-      <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-3">
-        {toasts.map(toast => (
-          <div 
-            key={toast.id} 
-            className="animate-toast bg-slate-900 border border-white/10 text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center gap-4 min-w-[300px]"
-          >
-            <AlertCircle className="text-blue-400" size={24} />
-            <p className="font-bold text-lg">{toast.message}</p>
+      <input type="file" multiple ref={fileInputRef} className="hidden" />
+      {showCamera && (
+          <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-xl">
+              <video ref={videoRef} autoPlay playsInline className="max-w-full rounded-2xl border border-white/10 shadow-3xl" />
+              <div className="flex gap-4 mt-8">
+                  <button onClick={stopCamera} className="p-4 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"><X size={24} /></button>
+                  <button className="p-6 rounded-full bg-blue-600 border-4 border-white text-white shadow-2xl active:scale-90 transition-transform"><Camera size={24} /></button>
+              </div>
           </div>
-        ))}
-      </div>
-      
+      )}
     </div>
   );
 };

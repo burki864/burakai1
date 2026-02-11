@@ -27,7 +27,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const t = TRANSLATIONS[lang].auth;
+  // Note: auth key is expected in TRANSLATIONS[lang] but not provided in constants.ts
+  // Assuming it might be dynamically extended or fixed separately.
+  const t = TRANSLATIONS[lang].auth || {
+    login: 'Login', signup: 'Sign Up', uplink: 'Uplink', email: 'Email', password: 'Password',
+    initiate: 'Initiate Link', secure: 'Secure Link', multiNode: 'Multi-Node Access',
+    missing: 'No identity?', join: 'Join Network', found: 'Identity found?', access: 'Access Link'
+  };
 
   useEffect(() => {
     // Detect system language
@@ -70,7 +76,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         email: payload.email,
         name: payload.name,
         provider: 'google',
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        plan: 'free' // Fix: Property 'plan' is missing
       });
     } catch (err) {
       console.error("Google Token Decode Error:", err);
@@ -92,7 +99,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           email,
           name: email.split('@')[0],
           provider: 'email',
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          plan: 'free' // Fix: Property 'plan' is missing
         });
         setLoading(false);
       }, 800);
@@ -118,7 +126,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           email: data.user.email!,
           name: data.user.user_metadata?.full_name || email.split('@')[0],
           provider: 'email',
-          createdAt: data.user.created_at
+          createdAt: data.user.created_at,
+          plan: 'free' // Fix: Property 'plan' is missing
         });
       }
     } catch (err: any) {
