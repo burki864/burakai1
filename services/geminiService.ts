@@ -1,8 +1,12 @@
 
+// Refactored to use official @google/genai SDK for all neural synthesis tasks
+import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
 import { SettingsState, Message, Attachment } from "../types";
-import { MODELS } from "../constants";
 
 export class GeminiService {
+  /**
+   * Generates a text stream using Gemini 3 Flash for high-performance neural chat.
+   */
   async generateTextStream(
     prompt: string,
     history: Message[],
@@ -11,35 +15,48 @@ export class GeminiService {
     onChunk: (text: string) => void
   ): Promise<string> {
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          prompt, 
-          history, 
-          settings,
-          attachments 
-        }),
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      
+      const contents = history.map(m => ({
+        role: m.role === 'user' ? 'user' : 'model',
+        parts: [{ text: m.content }]
+      }));
+
+      // Integrate vision capabilities if attachments are present
+      const currentParts: any[] = [{ text: prompt }];
+      attachments.forEach(att => {
+        currentParts.push({
+          inlineData: {
+            mimeType: att.mimeType,
+            data: att.data
+          }
+        });
       });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({ error: 'Unknown server error' }));
-        throw new Error(errData.error || 'Connection failed.');
-      }
+      contents.push({
+        role: 'user',
+        parts: currentParts
+      });
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
+      const responseStream = await ai.models.generateContentStream({
+        model: 'gemini-3-flash-preview',
+        contents,
+        config: {
+          systemInstruction: settings.systemPrompt,
+          temperature: settings.creativity,
+          tools: settings.searchEnabled ? [{ googleSearch: {} }] : undefined,
+          thinkingConfig: { thinkingBudget: 0 } // Optimization for real-time responsiveness
+        },
+      });
+
       let fullText = "";
-
-      if (!reader) throw new Error("Stream unavailable");
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const chunk = decoder.decode(value, { stream: true });
-        fullText += chunk;
-        onChunk(chunk);
+      for await (const chunk of responseStream) {
+        const c = chunk as GenerateContentResponse;
+        const text = c.text;
+        if (text) {
+          fullText += text;
+          onChunk(text);
+        }
       }
 
       return fullText;
@@ -50,57 +67,89 @@ export class GeminiService {
   }
 
   /**
-   * Generates a high-quality image using the Pollinations Flux model via our backend.
-   * Resolves with a direct URL string to prevent component loading hangs.
+   * Synthesizes a high-fidelity image using gemini-2.5-flash-image.
    */
   async generateImage(prompt: string, aspectRatio: string = "1:1"): Promise<string> {
     console.log("Synthesizing Vision for:", prompt);
     
     try {
-      const response = await fetch('/api/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, aspectRatio }),
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-2.5-flash-image',
+        contents: {
+          parts: [{ text: prompt }],
+        },
+        config: {
+          imageConfig: {
+            aspectRatio: aspectRatio as any
+          }
+        }
       });
 
-      const data = await response.json();
-      console.log("API RESPONSE:", data);
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Vision synthesis failed at the core.');
+      let imageUrl = "";
+      // Iterate candidates to extract synthesized image data
+      const candidates = response.candidates || [];
+      if (candidates.length > 0) {
+        for (const part of candidates[0].content.parts) {
+          if (part.inlineData) {
+            imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+            break;
+          }
+        }
       }
 
-      if (typeof data.imageUrl !== 'string') {
-        throw new Error('Malformed response: imageUrl is missing or invalid.');
+      if (!imageUrl) {
+        throw new Error('Vision synthesis failed: Image data missing from neural response.');
       }
 
-      return data.imageUrl;
+      return imageUrl;
     } catch (error: any) {
       console.error('Image Generation Service Error:', error);
       throw error;
     }
   }
 
+  /**
+   * Synthesizes cinematic video using veo-3.1-fast-generate-preview.
+   */
   async generateVideo(prompt: string, userId: string, aspectRatio: '16:9' | '9:16' = '16:9', onProgress?: (msg: string) => void): Promise<string> {
-    onProgress?.("Initiating Pika Synthesis Flow...");
+    onProgress?.("Initiating Veo Cinematic Synthesis...");
     
     try {
-      const response = await fetch('/api/generate-video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, aspectRatio, userId }),
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      let operation = await ai.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt,
+        config: {
+          numberOfVideos: 1,
+          resolution: '1080p',
+          aspectRatio
+        }
       });
 
-      if (!response.ok) {
-          const err = await response.json().catch(() => ({}));
-          throw new Error(err.error || "Pika production link failed.");
+      onProgress?.("Neural core processing temporal vectors... (Estimated: 1-2m)");
+
+      // Poll neural operation until synthesis is finalized
+      while (!operation.done) {
+        await new Promise(resolve => setTimeout(resolve, 10000));
+        operation = await ai.operations.getVideosOperation({ operation: operation });
       }
 
-      const data = await response.json();
-      onProgress?.("Motion vectors calculated. Finalizing clip...");
-      return data.videoUrl;
+      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      if (!downloadLink) {
+        throw new Error("Failed to retrieve finalized cinematic synthesis.");
+      }
+
+      // Securely fetch MP4 data utilizing current neural key
+      const videoResponse = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
+      if (!videoResponse.ok) {
+        throw new Error("Failed to download synthesized motion node.");
+      }
+
+      const blob = await videoResponse.blob();
+      return URL.createObjectURL(blob);
     } catch (error: any) {
-      console.error("Pika Service Error:", error);
+      console.error("Veo Synthesis Error:", error);
       throw error;
     }
   }

@@ -85,7 +85,6 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
 
     const intent = detectIntent(cleanInput);
     
-    // API Key selection is mandatory for Veo
     if (intent === 'video') {
       const aistudio = (window as any).aistudio;
       if (aistudio && !(await aistudio.hasSelectedApiKey())) {
@@ -99,7 +98,6 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
       if (!checkVideoRateLimit()) return;
     }
 
-    // Persist user message to Supabase
     try {
       if (cleanInput) await persistMessage(user.id, cleanInput);
     } catch (err) {
@@ -187,12 +185,6 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
           (chunk) => setStreamingMessage(prev => prev + chunk)
         );
         
-        try {
-          await persistMessage(user.id, fullResponse);
-        } catch (err) {
-          console.warn("Response persistence bypassed.");
-        }
-
         onUpdateMessages([...newMessages, { 
           id: Date.now().toString(), 
           role: 'assistant', 
@@ -216,64 +208,68 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
       onDragLeave={() => setIsDraggingFile(false)}
       onDrop={(e) => { e.preventDefault(); setIsDraggingFile(false); }}>
       
-      <header className="px-4 py-3 md:px-10 md:py-6 flex items-center justify-between glass-panel sticky top-0 z-20 border-b border-white/10">
-        <div className="flex items-center gap-3 md:gap-4">
-          <Logo size={32} className="md:w-12 md:h-12" />
+      <header className="px-4 py-3 md:px-8 lg:px-10 md:py-6 flex items-center justify-between glass-panel sticky top-0 z-20 border-b border-white/10">
+        <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
+          <Logo size={32} className="md:w-10 lg:w-12 shrink-0" />
           <div className="min-w-0">
-            <h3 className="font-black text-sm md:text-2xl tracking-tighter leading-none truncate">{chat?.title || t.welcome}</h3>
-            <div className="flex items-center gap-2 mt-1">
-               <span className="text-[7px] md:text-[10px] text-blue-400 font-bold uppercase tracking-widest">Neural Link Active</span>
+            <h3 className="font-black text-sm sm:text-lg md:text-xl lg:text-2xl tracking-tighter leading-none truncate">{chat?.title || t.welcome}</h3>
+            <div className="flex items-center gap-2 mt-0.5 md:mt-1">
+               <span className="text-[7px] sm:text-[8px] md:text-[10px] text-blue-400 font-bold uppercase tracking-widest whitespace-nowrap">Neural Link Active</span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-            <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                <Zap size={12} className="text-emerald-400" />
-                <span className="text-[8px] font-black text-emerald-400 uppercase tracking-widest">Real-time Node</span>
+        <div className="flex items-center gap-2 shrink-0">
+            <div className="hidden sm:flex items-center gap-2 px-2 py-1 md:px-3 md:py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                <Zap size={10} className="text-emerald-400 md:w-3 md:h-3" />
+                <span className="text-[7px] md:text-[9px] font-black text-emerald-400 uppercase tracking-widest">Real-time Node</span>
             </div>
         </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 md:px-10 py-6 md:py-16 space-y-8 md:space-y-12 custom-scrollbar">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 py-6 md:py-12 lg:py-16 space-y-6 md:space-y-10 custom-scrollbar">
         {!chat && (
-            <div className="max-w-4xl mx-auto text-center space-y-6 md:space-y-12 py-8 md:py-24 animate-in fade-in zoom-in duration-500">
-                <Logo size={100} className="mx-auto md:w-48 md:h-48" />
-                <h2 className="text-4xl md:text-8xl font-black tracking-tighter leading-tight">{t.welcome}</h2>
-                <p className="text-base md:text-3xl text-slate-500 font-bold px-4 max-w-2xl mx-auto">{t.subtitle}</p>
-                <button onClick={onNewChat} className="px-10 py-4 md:px-14 md:py-6 rounded-2xl md:rounded-[3rem] bg-blue-600 text-white font-black text-lg md:text-2xl shadow-3xl hover:scale-105 active:scale-95 transition-transform duration-300">
+            <div className="w-full max-w-4xl mx-auto text-center space-y-6 md:space-y-10 py-10 md:py-24 animate-in fade-in zoom-in duration-500">
+                <Logo size={80} className="mx-auto sm:w-24 sm:h-24 md:w-32 md:h-32 lg:w-48 lg:h-48" />
+                <div className="space-y-2 md:space-y-4">
+                  <h2 className="text-3xl sm:text-5xl md:text-6xl lg:text-8xl font-black tracking-tighter leading-tight">{t.welcome}</h2>
+                  <p className="text-sm sm:text-xl md:text-2xl lg:text-3xl text-slate-500 font-bold px-4 max-w-2xl mx-auto">{t.subtitle}</p>
+                </div>
+                <button onClick={onNewChat} className="px-8 py-3 sm:px-10 sm:py-4 md:px-14 md:py-6 rounded-xl sm:rounded-2xl md:rounded-[3rem] bg-blue-600 text-white font-black text-base sm:text-lg md:text-2xl shadow-3xl hover:scale-105 active:scale-95 transition-transform duration-300">
                     {t.init}
                 </button>
             </div>
         )}
 
         {chat?.messages.map((msg) => (
-          <div key={msg.id} className={`flex gap-3 md:gap-8 max-w-5xl mx-auto animate-in slide-in-from-bottom-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-            <div className={`w-8 h-8 md:w-16 md:h-16 rounded-xl md:rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'glass-panel text-blue-400'}`}>
-              {msg.role === 'user' ? <UserIcon size={14} className="md:w-8 md:h-8" /> : <Logo size={20} className="md:w-9 md:h-9" />}
+          <div key={msg.id} className={`flex gap-3 sm:gap-4 md:gap-8 max-w-5xl mx-auto animate-in slide-in-from-bottom-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+            <div className={`w-8 h-8 sm:w-10 sm:h-10 md:w-14 md:h-14 lg:w-16 lg:h-16 rounded-lg sm:rounded-xl md:rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'glass-panel text-blue-400'}`}>
+              {msg.role === 'user' ? <UserIcon size={14} className="sm:w-5 sm:h-5 md:w-7 md:h-7" /> : <Logo size={20} className="sm:w-6 sm:h-6 md:w-8 md:h-8" />}
             </div>
-            <div className={`flex flex-col space-y-3 md:space-y-5 max-w-[88%] md:max-w-[80%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+            <div className={`flex flex-col space-y-2 sm:space-y-3 md:space-y-5 w-full ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
               {msg.isGenerating && (
-                <div className="flex flex-col items-center gap-6 animate-in zoom-in">
+                <div className="flex flex-col items-center gap-4 md:gap-6 animate-in zoom-in w-full max-w-[280px] sm:max-w-md">
                   <GenerationAnimation type={msg.generationType || 'image'} />
                   {msg.generationType === 'video' && (
                     <div className="text-center">
-                      <p className="text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] animate-pulse">Neural synthesis in progress</p>
-                      <p className="text-[8px] text-slate-500 font-bold uppercase tracking-widest mt-1">Completion: 1-3 minutes</p>
+                      <p className="text-[8px] md:text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] animate-pulse">Neural synthesis in progress</p>
+                      <p className="text-[7px] md:text-[8px] text-slate-500 font-bold uppercase tracking-widest mt-1">Completion: 1-3 minutes</p>
                     </div>
                   )}
                 </div>
               )}
               
               {msg.imageUrl && (
-                <img 
-                  src={msg.imageUrl} 
-                  className="w-full aspect-square max-w-[280px] md:max-w-[400px] object-cover rounded-2xl md:rounded-[3rem] shadow-2xl border border-white/10 animate-in zoom-in duration-300" 
-                  alt="Neural Synthesis"
-                />
+                <div className="w-full max-w-[85%] sm:max-w-[70%] md:max-w-[400px]">
+                  <img 
+                    src={msg.imageUrl} 
+                    className="w-full aspect-square object-cover rounded-xl sm:rounded-2xl md:rounded-[2.5rem] lg:rounded-[3rem] shadow-2xl border border-white/10 animate-in zoom-in duration-300" 
+                    alt="Neural Synthesis"
+                  />
+                </div>
               )}
               
               {msg.videoUrl && (
-                <div className="w-full max-w-[600px] rounded-2xl md:rounded-[3rem] shadow-2xl border border-white/10 overflow-hidden ring-4 ring-blue-500/5 animate-in zoom-in duration-500">
+                <div className="w-full max-w-[95%] sm:max-w-[80%] md:max-w-[600px] rounded-xl sm:rounded-2xl md:rounded-[2.5rem] lg:rounded-[3rem] shadow-2xl border border-white/10 overflow-hidden ring-4 ring-blue-500/5 animate-in zoom-in duration-500">
                   <video controls autoPlay loop playsInline className="w-full">
                      <source src={msg.videoUrl} type="video/mp4" />
                   </video>
@@ -281,7 +277,7 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
               )}
               
               {msg.content && (
-                <div className={`p-4 md:p-10 rounded-2xl md:rounded-[3.5rem] text-base md:text-2xl font-bold leading-relaxed shadow-xl chat-bubble ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'glass-panel border-white/5 text-slate-100'}`}>
+                <div className={`p-3.5 sm:p-5 md:p-8 lg:p-10 rounded-2xl sm:rounded-[2rem] md:rounded-[3rem] lg:rounded-[3.5rem] text-sm sm:text-base md:text-xl lg:text-2xl font-bold leading-relaxed shadow-xl chat-bubble max-w-[88%] sm:max-w-[82%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'glass-panel border-white/5 text-slate-100 rounded-tl-none'}`}>
                   {msg.content}
                 </div>
               )}
@@ -290,46 +286,46 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
         ))}
 
         {streamingMessage && (
-            <div className="flex gap-3 md:gap-8 max-w-5xl mx-auto">
-                <div className="w-8 h-8 md:w-16 md:h-16 rounded-xl glass-panel flex items-center justify-center flex-shrink-0"><Logo size={18} /></div>
-                <div className="p-4 md:p-10 rounded-2xl md:rounded-[3.5rem] glass-panel text-base md:text-2xl font-bold flex-1 shadow-xl text-slate-100 chat-bubble">
+            <div className="flex gap-3 sm:gap-4 md:gap-8 max-w-5xl mx-auto">
+                <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-14 md:h-14 lg:w-16 lg:h-16 rounded-lg sm:rounded-xl md:rounded-2xl glass-panel flex items-center justify-center flex-shrink-0"><Logo size={18} className="sm:w-6 sm:h-6 md:w-8 md:h-8" /></div>
+                <div className="p-3.5 sm:p-5 md:p-8 lg:p-10 rounded-2xl sm:rounded-[2rem] md:rounded-[3rem] lg:rounded-[3.5rem] glass-panel text-sm sm:text-base md:text-xl lg:text-2xl font-bold flex-1 shadow-xl text-slate-100 chat-bubble max-w-[88%] sm:max-w-[82%] md:max-w-[75%] rounded-tl-none">
                   {streamingMessage}
-                  <span className="inline-block w-2 h-5 ml-1 bg-blue-500 animate-pulse"></span>
+                  <span className="inline-block w-1.5 md:w-2 h-4 md:h-5 ml-1 bg-blue-500 animate-pulse"></span>
                 </div>
             </div>
         )}
       </div>
 
-      <div className="p-4 md:p-10 bg-gradient-to-t from-slate-950 to-transparent">
-        <div className="max-w-4xl mx-auto space-y-3">
+      <div className="px-4 pb-4 sm:px-6 sm:pb-6 md:px-10 md:pb-10 bg-gradient-to-t from-slate-950 to-transparent">
+        <div className="max-w-4xl mx-auto space-y-2 md:space-y-4">
             {error && (
-              <div className="p-3 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-[10px] md:text-xs font-black flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
-                <AlertCircle size={14} /> {error}
+              <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-[9px] sm:text-[10px] md:text-xs font-black flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
+                <AlertCircle size={14} className="shrink-0" /> <span className="truncate">{error}</span>
               </div>
             )}
             
-            <div className="glass-panel rounded-2xl md:rounded-[3rem] border-white/10 p-2 md:p-4 shadow-3xl">
+            <div className="glass-panel rounded-2xl sm:rounded-[2rem] md:rounded-[3rem] border-white/10 p-1.5 md:p-4 shadow-3xl">
                 <textarea 
                     rows={1} 
                     value={input}
                     onChange={(e) => { 
                       setInput(e.target.value); 
                       e.target.style.height = 'auto'; 
-                      e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`; 
+                      e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`; 
                     }}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                     placeholder={t.placeholder}
-                    className="w-full bg-transparent border-none focus:ring-0 p-3 md:p-6 text-white font-bold text-lg md:text-3xl placeholder-slate-700 resize-none" />
-                <div className="flex items-center justify-between px-2 md:px-6 py-2 md:py-3 border-t border-white/5">
-                    <div className="flex items-center gap-2">
-                        <button onClick={() => fileInputRef.current?.click()} className="p-2.5 text-slate-500 hover:text-blue-400 transition-colors"><Paperclip size={20} className="md:w-6 md:h-6" /></button>
-                        <button onClick={startCamera} className="p-2.5 text-slate-500 hover:text-purple-400 transition-colors"><Camera size={20} className="md:w-6 md:h-6" /></button>
+                    className="w-full bg-transparent border-none focus:ring-0 p-3 sm:p-4 md:p-6 text-white font-bold text-base sm:text-lg md:text-2xl lg:text-3xl placeholder-slate-700 resize-none min-h-[50px]" />
+                <div className="flex items-center justify-between px-2 sm:px-4 md:px-6 py-2 md:py-3 border-t border-white/5">
+                    <div className="flex items-center gap-1 md:gap-2">
+                        <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-500 hover:text-blue-400 transition-colors"><Paperclip size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" /></button>
+                        <button onClick={startCamera} className="p-2 text-slate-500 hover:text-purple-400 transition-colors"><Camera size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" /></button>
                     </div>
                     <button 
                         onClick={handleSend} 
                         disabled={(!input.trim() && attachments.length === 0) || isTyping}
-                        className={`w-11 h-11 md:w-16 md:h-16 rounded-xl md:rounded-[1.8rem] transition-all flex items-center justify-center ${(!input.trim() && attachments.length === 0) || isTyping ? 'bg-slate-900 text-slate-600' : 'bg-blue-600 text-white shadow-3xl hover:scale-105 active:scale-95'}`}>
-                        {isTyping ? <Loader2 size={20} className="animate-spin" /> : <Send size={20} className="md:w-8 md:h-8" />}
+                        className={`w-9 h-9 sm:w-11 sm:h-11 md:w-14 md:h-14 lg:w-16 lg:h-16 rounded-xl sm:rounded-2xl md:rounded-[1.8rem] transition-all flex items-center justify-center shrink-0 ${(!input.trim() && attachments.length === 0) || isTyping ? 'bg-slate-900 text-slate-600' : 'bg-blue-600 text-white shadow-3xl hover:scale-105 active:scale-95'}`}>
+                        {isTyping ? <Loader2 size={16} className="animate-spin md:w-6 md:h-6" /> : <Send size={16} className="sm:w-5 sm:h-5 md:w-7 md:h-7 lg:w-8 lg:h-8" />}
                     </button>
                 </div>
             </div>
@@ -338,11 +334,11 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
 
       <input type="file" multiple ref={fileInputRef} className="hidden" />
       {showCamera && (
-          <div className="fixed inset-0 z-50 bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-3xl">
-              <video ref={videoRef} autoPlay playsInline className="max-w-full rounded-2xl border border-white/10 shadow-3xl" />
-              <div className="flex gap-6 mt-10">
-                  <button onClick={stopCamera} className="p-5 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"><X size={24} /></button>
-                  <button className="p-8 rounded-full bg-blue-600 border-4 border-white text-white shadow-2xl active:scale-90 transition-transform"><Camera size={28} /></button>
+          <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-3xl">
+              <video ref={videoRef} autoPlay playsInline className="max-w-full max-h-[70vh] rounded-2xl border border-white/10 shadow-3xl" />
+              <div className="flex gap-4 sm:gap-6 mt-8 md:mt-10">
+                  <button onClick={stopCamera} className="p-4 sm:p-5 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"><X size={20} className="sm:w-6 sm:h-6" /></button>
+                  <button className="p-6 sm:p-8 rounded-full bg-blue-600 border-2 sm:border-4 border-white text-white shadow-2xl active:scale-90 transition-transform"><Camera size={24} className="sm:w-7 sm:h-7" /></button>
               </div>
           </div>
       )}

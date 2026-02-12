@@ -66,14 +66,14 @@ const App: React.FC = () => {
   const activeChat = chats.find(c => c.id === activeChatId);
 
   return (
-    <div className={`flex h-screen w-full transition-all duration-500 overflow-hidden ${settings.darkMode ? 'bg-slate-950 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
+    <div className={`flex h-[100dvh] w-full transition-all duration-500 overflow-hidden ${settings.darkMode ? 'bg-slate-950 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
       <BackgroundTheme theme={settings.activeTheme} />
 
-      <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="fixed top-4 right-4 z-[60] p-2 rounded-xl glass-panel border border-white/10 md:hidden transition-transform active:scale-90">
+      <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="fixed top-3.5 right-4 z-[60] p-2.5 rounded-xl glass-panel border border-white/10 md:hidden transition-transform active:scale-90 shadow-2xl">
         {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
 
-      <div className={`fixed inset-y-0 left-0 z-50 md:relative transform transition-transform duration-500 ease-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0`}>
+      <div className={`fixed inset-y-0 left-0 z-50 md:relative transform transition-transform duration-500 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 shadow-2xl md:shadow-none`}>
         <Sidebar 
             chats={chats} activeChatId={activeChatId} 
             onSelectChat={(id) => { setActiveChatId(id); setView('chat'); setIsSidebarOpen(false); }}
@@ -84,9 +84,9 @@ const App: React.FC = () => {
         />
       </div>
       
-      {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-300" />}
+      {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-300" />}
 
-      <main className="flex-1 flex flex-col relative overflow-hidden">
+      <main className="flex-1 flex flex-col relative overflow-hidden h-full">
         {view === 'chat' && <ChatView chat={activeChat} settings={settings} user={user} onUpdateMessages={(msgs) => activeChatId && setChats(p => p.map(c => c.id === activeChatId ? { ...c, messages: msgs } : c))} onNewChat={createNewChat} />}
         {view === 'images' && <ImageGenerator images={images} onSaveImage={(img) => setImages(p => [img, ...p])} onDeleteImage={(id) => setImages(p => p.filter(i => i.id !== id))} settings={settings} />}
         {view === 'video-studio' && <VideoStudio settings={settings} user={user} />}
