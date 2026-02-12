@@ -10,19 +10,19 @@ const Logo: React.FC<LogoProps> = ({ className = "", size = 40 }) => {
   return (
     <div className={`relative flex items-center justify-center ${className}`} style={{ width: size, height: size }}>
       {/* Background Glow */}
-      <div className="absolute inset-0 bg-blue-500/20 blur-[25px] rounded-full scale-150 animate-pulse"></div>
+      <div className="absolute inset-0 bg-[var(--accent-primary)]/20 blur-[25px] rounded-full scale-150 animate-pulse"></div>
       
       <svg 
         viewBox="0 0 100 100" 
-        className="relative z-10 w-full h-full drop-shadow-[0_0_15px_rgba(59,130,246,0.5)]"
+        className="relative z-10 w-full h-full drop-shadow-[0_0_15px_var(--accent-glow)]"
         fill="none" 
         xmlns="http://www.w3.org/2000/svg"
       >
         <defs>
           <linearGradient id="b-symbol-grad" x1="20" y1="20" x2="80" y2="80" gradientUnits="userSpaceOnUse">
-            <stop offset="0%" stopColor="#22d3ee" />
-            <stop offset="60%" stopColor="#3b82f6" />
-            <stop offset="100%" stopColor="#a855f7" />
+            <stop offset="0%" stopColor="var(--accent-primary)" />
+            <stop offset="60%" stopColor="var(--accent-primary)" />
+            <stop offset="100%" stopColor="var(--accent-secondary)" />
           </linearGradient>
           
           <radialGradient id="nebula-grad" cx="50" cy="55" r="45" gradientUnits="userSpaceOnUse">
@@ -57,8 +57,8 @@ const Logo: React.FC<LogoProps> = ({ className = "", size = 40 }) => {
           <circle cx="80" cy="58" r="0.4" fill="white" />
           <circle cx="45" cy="42" r="0.3" fill="white" style={{ animationDelay: '1.5s' }} className="animate-pulse" />
           <circle cx="65" cy="68" r="0.3" fill="white" />
-          <circle cx="15" cy="62" r="2.5" fill="#3b82f6" fillOpacity="0.4" />
-          <circle cx="15" cy="62" r="1.5" fill="#60a5fa" />
+          <circle cx="15" cy="62" r="2.5" fill="var(--accent-primary)" fillOpacity="0.4" />
+          <circle cx="15" cy="62" r="1.5" fill="var(--accent-primary)" />
         </g>
 
         {/* Refined 'B' Path - Upper Segment */}

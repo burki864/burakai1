@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Mail, Lock, Move, Chrome, Github, ShieldAlert, Loader2, ExternalLink, Camera } from 'lucide-react';
+import { Mail, Lock, Move, Chrome, Github, ShieldAlert, Loader2, Info } from 'lucide-react';
 import { supabase, isSupabaseConfigured, createProfile } from '../services/supabase';
 import { User, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
@@ -18,6 +18,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gsiEnabled, setGsiEnabled] = useState(true);
   const [lang, setLang] = useState<Language>(Language.EN);
 
   // Draggable logic states
@@ -43,15 +44,14 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
             client_id: GOOGLE_CLIENT_ID,
             callback: handleGoogleCredentialResponse,
             auto_select: false,
-            use_fedcm_for_prompt: false, 
             cancel_on_tap_outside: true,
-            itp_support: true,
           });
         } catch (e) {
-          console.error("GSI Init Error:", e);
+          console.warn("GSI Init Suppressed (Origin Restriction):", e);
+          setGsiEnabled(false);
         }
       }
-    }, 100);
+    }, 200);
 
     return () => clearInterval(interval);
   }, []);
@@ -60,7 +60,6 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setLoading(true);
     try {
       const base64Url = response.credential.split('.')[1];
-      // Avoid using regex literals for replacement to prevent parsing errors
       const base64 = base64Url.split('-').join('+').split('_').join('/');
       const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
           return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
@@ -81,7 +80,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
       onLogin(user);
     } catch (err) {
       console.error("Google Auth Error:", err);
-      setError("Failed to verify identity node.");
+      setError("Failed to verify identity node. Try email login.");
     } finally {
       setLoading(false);
     }
@@ -95,7 +94,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     if (!isSupabaseConfigured) {
       setTimeout(() => {
         const user: User = {
-          id: 'dev-operative',
+          id: 'dev-operative-' + Date.now(),
           email,
           name: email.split('@')[0],
           provider: 'email',
@@ -109,10 +108,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     }
 
     try {
-      const auth = supabase.auth as any;
       const { data, error: supabaseError } = mode === 'login' 
-        ? await auth.signInWithPassword({ email, password })
-        : await auth.signUp({ email, password });
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({ email, password });
 
       if (supabaseError) throw supabaseError;
 
@@ -137,19 +135,24 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   const handleGoogleLogin = () => {
+    if (!gsiEnabled) {
+      setError("Google Login is unavailable for this domain origin. Please use email.");
+      return;
+    }
     if ((window as any).google?.accounts?.id) {
       (window as any).google.accounts.id.prompt((notification: any) => {
         if (notification.isNotDisplayed()) {
-          setError("Google login prompt suppressed. Check your account session.");
+          setError("Google login prompt suppressed. Please use email.");
         }
       });
     } else {
-      setError("Initializing Google Identity Node...");
+      setError("Waiting for Identity Node...");
     }
   };
 
   const onMouseDown = (e: React.MouseEvent) => {
     if ((e.target as HTMLElement).closest('button, input, textarea, a')) return;
+    if (window.innerWidth < 1024) return;
     setIsDragging(true);
     setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
   };
@@ -171,25 +174,25 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   }, [isDragging, dragStart]);
 
   return (
-    <div className="min-h-screen w-full flex flex-col lg:flex-row bg-[#010409] text-white overflow-y-auto custom-scrollbar relative">
+    <div className="h-full w-full flex flex-col lg:flex-row bg-[#010409] text-white overflow-y-auto custom-scrollbar relative scroll-smooth">
       <div className="fixed inset-0 pointer-events-none">
         <div className="absolute top-[20%] right-[15%] w-[800px] h-[800px] bg-purple-600 opacity-10 rounded-full blur-[150px] animate-pulse duration-[8s]"></div>
         <div className="absolute bottom-[20%] left-[15%] w-[600px] h-[600px] bg-blue-500 opacity-10 rounded-full blur-[130px] animate-pulse duration-[10s]"></div>
       </div>
 
-      <div className="w-full lg:flex-1 min-h-[40vh] lg:min-h-screen flex relative items-center justify-center border-b lg:border-b-0 lg:border-r border-white/5 bg-slate-950/20 px-8 py-12 lg:p-0">
+      <div className="w-full lg:flex-1 min-h-[40vh] lg:h-full flex relative items-center justify-center border-b lg:border-b-0 lg:border-r border-white/5 bg-slate-950/20 px-8 py-12 lg:p-0">
         <div className="max-w-2xl text-center z-10 lg:px-16">
           <Logo size={180} className="mb-12 mx-auto animate-float" />
           <h1 className="text-6xl md:text-8xl font-black mb-8 leading-[1] tracking-tighter">
             Neural<br/><span className="gradient-text">Core.</span>
           </h1>
           <p className="text-xl md:text-2xl text-slate-500 font-bold leading-relaxed tracking-tight">
-            High-performance Groq integration with Supabase-backed persistence.
+           Enter the stream. Synthesize reality.
           </p>
         </div>
       </div>
 
-      <div className="w-full lg:w-[650px] flex items-start justify-center p-6 md:p-12 relative z-10 lg:min-h-screen">
+      <div className="w-full lg:w-[650px] flex items-start justify-center p-6 md:p-12 relative z-10 min-h-max lg:min-h-full">
         <div 
           ref={cardRef}
           onMouseDown={onMouseDown}
@@ -204,8 +207,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           </div>
 
           <div className="mb-10 text-center">
-            <div className="inline-flex items-center gap-4 mb-6"><Logo size={48} /><span className="text-3xl font-black tracking-tighter">BurakAI</span></div>
-            <h2 className="text-4xl md:text-5xl font-black mb-4 tracking-tighter">{mode === 'login' ? t.login : t.signup}</h2>
+            <div className="inline-flex items-center gap-4 mb-6"><Logo size={48} /><span className="text-3xl font-black tracking-tighter text-white">BurakAI</span></div>
+            <h2 className="text-4xl md:text-5xl font-black mb-4 tracking-tighter text-white">{mode === 'login' ? t.login : t.signup}</h2>
           </div>
 
           <form onSubmit={handleAuth} className="space-y-6">
@@ -215,7 +218,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <Mail className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-blue-500" size={24} />
                 <input 
                   type="email" required value={email} onChange={(e) => setEmail(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-[2rem] py-5 pl-16 pr-8 outline-none focus:border-blue-500 transition-all font-black text-xl"
+                  className="w-full bg-white/5 border border-white/10 rounded-[2rem] py-5 pl-16 pr-8 outline-none focus:border-blue-500 transition-all font-black text-xl text-white placeholder-slate-700"
                   placeholder="name@matrix.io"
                 />
               </div>
@@ -227,7 +230,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                 <Lock className="absolute left-6 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-blue-500" size={24} />
                 <input 
                   type="password" required value={password} onChange={(e) => setPassword(e.target.value)}
-                  className="w-full bg-white/5 border border-white/10 rounded-[2rem] py-5 pl-16 pr-8 outline-none focus:border-blue-500 transition-all font-black text-xl"
+                  className="w-full bg-white/5 border border-white/10 rounded-[2rem] py-5 pl-16 pr-8 outline-none focus:border-blue-500 transition-all font-black text-xl text-white placeholder-slate-700"
                   placeholder="••••••••"
                 />
               </div>
@@ -241,7 +244,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
             <button 
               type="submit" disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 text-white font-black py-5 rounded-[2rem] shadow-3xl transition-all disabled:opacity-50 flex items-center justify-center gap-4 text-xl"
+              className="w-full bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-500 hover:to-indigo-600 text-white font-black py-5 rounded-[2rem] shadow-3xl transition-all disabled:opacity-50 flex items-center justify-center gap-4 text-xl active:scale-[0.98]"
             >
               {loading ? <Loader2 className="animate-spin" size={32} /> : mode === 'login' ? t.initiate : t.secure}
             </button>
@@ -250,9 +253,21 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           <div className="my-10 flex items-center gap-6"><div className="h-px bg-white/10 flex-1"></div><span className="text-[10px] uppercase tracking-widest text-slate-600 font-black">Multi-Node</span><div className="h-px bg-white/10 flex-1"></div></div>
 
           <div className="grid grid-cols-2 gap-4 mb-8">
-            <button onClick={handleGoogleLogin} className="flex items-center justify-center gap-3 py-4 glass-panel rounded-2xl hover:bg-white/10 transition-all font-black text-[10px] uppercase tracking-widest border-white/5"><Chrome size={20} className="text-blue-400" /> Google</button>
-            <button className="flex items-center justify-center gap-3 py-4 glass-panel rounded-2xl hover:bg-white/10 transition-all font-black text-[10px] uppercase tracking-widest border-white/5"><Github size={20} /> GitHub</button>
+            <button 
+                onClick={handleGoogleLogin} 
+                className={`flex items-center justify-center gap-3 py-4 glass-panel rounded-2xl transition-all font-black text-[10px] uppercase tracking-widest border-white/5 text-slate-300 ${!gsiEnabled ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10'}`}
+            >
+                <Chrome size={20} className="text-blue-400" /> Google
+            </button>
+            <button className="flex items-center justify-center gap-3 py-4 glass-panel rounded-2xl hover:bg-white/10 transition-all font-black text-[10px] uppercase tracking-widest border-white/5 text-slate-300"><Github size={20} /> GitHub</button>
           </div>
+
+          {!gsiEnabled && (
+              <div className="mb-8 p-3 bg-blue-500/10 border border-blue-500/20 rounded-2xl flex items-start gap-3">
+                  <Info size={16} className="text-blue-400 shrink-0 mt-0.5" />
+                  <p className="text-[9px] font-black text-blue-400 uppercase leading-relaxed">Origin Restriction: Google login is disabled on this specific domain. Please use email.</p>
+              </div>
+          )}
 
           <p className="text-center text-slate-500 text-xs font-black uppercase tracking-widest">
             {mode === 'login' ? t.missing : t.found}

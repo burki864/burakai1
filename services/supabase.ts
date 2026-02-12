@@ -67,6 +67,28 @@ export async function createProfile(user: User) {
 }
 
 /**
+ * Updates an existing user profile in Supabase.
+ */
+export async function updateProfile(userId: string, updates: { username?: string; avatar_url?: string }) {
+  if (!isSupabaseConfigured) {
+    console.warn("Supabase not configured. Updates will not be persisted.");
+    return null;
+  }
+  try {
+    const { data, error } = await supabase
+      .from('profiles')
+      .update(updates)
+      .eq('id', userId);
+
+    if (error) throw error;
+    return data;
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    throw error;
+  }
+}
+
+/**
  * Inserts a new message into the messages table.
  */
 export async function sendMessage(userId: string, text: string) {

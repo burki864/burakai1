@@ -1,6 +1,6 @@
 
 import { SettingsState, Message, Attachment } from "../types";
-import { GoogleGenAI } from "@google/genai";
+import { MODELS } from "../constants";
 
 export class GeminiService {
   async generateTextStream(
@@ -49,65 +49,60 @@ export class GeminiService {
     }
   }
 
+  /**
+   * Generates a high-quality image using the Pollinations Flux model via our backend.
+   * Resolves with a direct URL string to prevent component loading hangs.
+   */
   async generateImage(prompt: string, aspectRatio: string = "1:1"): Promise<string> {
+    console.log("Synthesizing Vision for:", prompt);
+    
     try {
-      const response = await fetch('/api/image', {
+      const response = await fetch('/api/generate-image', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt, aspectRatio }),
       });
-      if (!response.ok) throw new Error('Failed to synthesize image');
+
       const data = await response.json();
+      console.log("API RESPONSE:", data);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Vision synthesis failed at the core.');
+      }
+
+      if (typeof data.imageUrl !== 'string') {
+        throw new Error('Malformed response: imageUrl is missing or invalid.');
+      }
+
       return data.imageUrl;
     } catch (error: any) {
+      console.error('Image Generation Service Error:', error);
       throw error;
     }
   }
 
-  async generateVideo(prompt: string, aspectRatio: '16:9' | '9:16' = '16:9', onProgress?: (msg: string) => void): Promise<string> {
-    // Create fresh instance to use latest API key from selection dialog
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  async generateVideo(prompt: string, userId: string, aspectRatio: '16:9' | '9:16' = '16:9', onProgress?: (msg: string) => void): Promise<string> {
+    onProgress?.("Initiating Pika Synthesis Flow...");
     
-    onProgress?.("Initiating neural video synthesis...");
-    let operation = await ai.models.generateVideos({
-      model: 'veo-3.1-fast-generate-preview',
-      prompt: prompt,
-      config: {
-        numberOfVideos: 1,
-        resolution: '720p',
-        aspectRatio: aspectRatio
+    try {
+      const response = await fetch('/api/generate-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, aspectRatio, userId }),
+      });
+
+      if (!response.ok) {
+          const err = await response.json().catch(() => ({}));
+          throw new Error(err.error || "Pika production link failed.");
       }
-    });
 
-    onProgress?.("Synthesizing frames in the cloud...");
-    while (!operation.done) {
-      await new Promise(resolve => setTimeout(resolve, 10000));
-      onProgress?.(this.getRandomLoadingMessage());
-      operation = await ai.operations.getVideosOperation({operation: operation});
+      const data = await response.json();
+      onProgress?.("Motion vectors calculated. Finalizing clip...");
+      return data.videoUrl;
+    } catch (error: any) {
+      console.error("Pika Service Error:", error);
+      throw error;
     }
-
-    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!downloadLink) throw new Error("Neural synthesis failed to produce content.");
-
-    onProgress?.("Finalizing video stream...");
-    // Must append API key when fetching from the download link
-    const response = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-    const blob = await response.blob();
-    return URL.createObjectURL(blob);
-  }
-
-  private getRandomLoadingMessage() {
-    const messages = [
-      "Encoding temporal dimensions...",
-      "Interpolating motion vectors...",
-      "Refining neural textures...",
-      "Spatio-temporal synthesis in progress...",
-      "Applying cinematic lighting...",
-      "Stabilizing visual coherence...",
-      "Dreaming the pixels into existence...",
-      "Mapping neural pathways..."
-    ];
-    return messages[Math.floor(Math.random() * messages.length)];
   }
 }
 

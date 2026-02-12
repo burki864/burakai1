@@ -15,12 +15,12 @@ export const DEFAULT_SETTINGS: SettingsState = {
 export const MODELS = {
   text: 'llama-3.3-70b-versatile',
   image: 'gemini-2.5-flash-image',
-  video: 'pika-video-turbo'
+  video: 'pika-1.0'
 };
 
 export const INTENT_KEYWORDS = {
   image: ['görsel oluştur', 'resim yap', 'create image', 'generate image', 'draw', 'çiz'],
-  video: ['video yap', 'video oluştur', 'create video', 'generate video', 'make video']
+  video: ['video yap', 'video oluştur', 'create video', 'generate video', 'make video', 'pika']
 };
 
 export const TRANSLATIONS: Record<Language, any> = {
@@ -54,10 +54,10 @@ export const TRANSLATIONS: Record<Language, any> = {
       ]
     },
     video: {
-      title: 'Cinematic Core',
-      subtitle: 'Neural Video Engine • 1 clip / min',
-      placeholder: 'Direct the neural engine...',
-      generate: 'Synthesize',
+      title: 'Pika Cinematic',
+      subtitle: 'Pika 1.0 Neural Engine • AI Motion Synthesis',
+      placeholder: 'Describe your cinematic vision for Pika...',
+      generate: 'Generate Video',
       empty: 'No Clips Synthesized',
       rateLimit: 'Cooling down... Wait 60s.'
     },
@@ -91,10 +91,10 @@ export const TRANSLATIONS: Record<Language, any> = {
       rateLimit: 'Videolar arası 60 saniye bekleyin.'
     },
     video: {
-      title: 'Sinematik Çekirdek',
-      subtitle: 'Nöral Video Motoru • 1 klip / dk',
-      placeholder: 'Nöral motoru yönlendirin...',
-      generate: 'Sentezle',
+      title: 'Pika Sinematik',
+      subtitle: 'Pika 1.0 Motoru • Yapay Zeka Hareket Sentezi',
+      placeholder: 'Pika için sinematik vizyonunuzu tarif edin...',
+      generate: 'Video Oluştur',
       empty: 'Sentezlenmiş Klip Yok',
       rateLimit: 'Soğuma süresi... 60 saniye bekleyin.'
     },
