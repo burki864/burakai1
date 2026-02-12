@@ -161,7 +161,7 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
       
       try {
         storageService.setLastVideoTimestamp(Date.now());
-        const url = await geminiService.generateVideo(cleanInput, '16:9');
+        const url = await geminiService.generateVideo(cleanInput, user.id, '16:9');
         onUpdateMessages([...newMessages, { 
           ...genMsg, 
           isGenerating: false, 
@@ -261,6 +261,7 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
               {msg.imageUrl && (
                 <div className="w-full max-w-[85%] sm:max-w-[70%] md:max-w-[400px]">
                   <img 
+                    key={msg.id + '-img'}
                     src={msg.imageUrl} 
                     className="w-full aspect-square object-cover rounded-xl sm:rounded-2xl md:rounded-[2.5rem] lg:rounded-[3rem] shadow-2xl border border-white/10 animate-in zoom-in duration-300" 
                     alt="Neural Synthesis"
@@ -270,7 +271,7 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
               
               {msg.videoUrl && (
                 <div className="w-full max-w-[95%] sm:max-w-[80%] md:max-w-[600px] rounded-xl sm:rounded-2xl md:rounded-[2.5rem] lg:rounded-[3rem] shadow-2xl border border-white/10 overflow-hidden ring-4 ring-blue-500/5 animate-in zoom-in duration-500">
-                  <video controls autoPlay loop playsInline className="w-full">
+                  <video key={msg.id + '-vid'} controls autoPlay loop playsInline className="w-full">
                      <source src={msg.videoUrl} type="video/mp4" />
                   </video>
                 </div>

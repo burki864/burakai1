@@ -1,11 +1,14 @@
 
-// Refactored to use official @google/genai SDK for all neural synthesis tasks
-import { GoogleGenAI, GenerateContentResponse } from "@google/genai";
+import { GoogleGenAI, GenerateContentResponse, Modality } from "@google/genai";
 import { SettingsState, Message, Attachment } from "../types";
 
 export class GeminiService {
+  private getAI() {
+    return new GoogleGenAI({ apiKey: process.env.API_KEY });
+  }
+
   /**
-   * Generates a text stream using Gemini 3 Flash for high-performance neural chat.
+   * Generates a text stream using gemini-3-flash-preview.
    */
   async generateTextStream(
     prompt: string,
@@ -15,14 +18,13 @@ export class GeminiService {
     onChunk: (text: string) => void
   ): Promise<string> {
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = this.getAI();
       
       const contents = history.map(m => ({
         role: m.role === 'user' ? 'user' : 'model',
         parts: [{ text: m.content }]
       }));
 
-      // Integrate vision capabilities if attachments are present
       const currentParts: any[] = [{ text: prompt }];
       attachments.forEach(att => {
         currentParts.push({
@@ -45,7 +47,6 @@ export class GeminiService {
           systemInstruction: settings.systemPrompt,
           temperature: settings.creativity,
           tools: settings.searchEnabled ? [{ googleSearch: {} }] : undefined,
-          thinkingConfig: { thinkingBudget: 0 } // Optimization for real-time responsiveness
         },
       });
 
@@ -67,13 +68,12 @@ export class GeminiService {
   }
 
   /**
-   * Synthesizes a high-fidelity image using gemini-2.5-flash-image.
+   * Synthesizes image using gemini-2.5-flash-image.
+   * Iterates through parts to find synthesized image data.
    */
   async generateImage(prompt: string, aspectRatio: string = "1:1"): Promise<string> {
-    console.log("Synthesizing Vision for:", prompt);
-    
     try {
-      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const ai = this.getAI();
       const response = await ai.models.generateContent({
         model: 'gemini-2.5-flash-image',
         contents: {
@@ -86,25 +86,19 @@ export class GeminiService {
         }
       });
 
-      let imageUrl = "";
-      // Iterate candidates to extract synthesized image data
+      // The model may return multiple parts; find the one with image data
       const candidates = response.candidates || [];
       if (candidates.length > 0) {
         for (const part of candidates[0].content.parts) {
           if (part.inlineData) {
-            imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-            break;
+            return `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
           }
         }
       }
 
-      if (!imageUrl) {
-        throw new Error('Vision synthesis failed: Image data missing from neural response.');
-      }
-
-      return imageUrl;
+      throw new Error('Neural core synthesis complete, but no image payload was found in the stream.');
     } catch (error: any) {
-      console.error('Image Generation Service Error:', error);
+      console.error('Image Synthesis Error:', error);
       throw error;
     }
   }
@@ -112,7 +106,20 @@ export class GeminiService {
   /**
    * Synthesizes cinematic video using veo-3.1-fast-generate-preview.
    */
-  async generateVideo(prompt: string, userId: string, aspectRatio: '16:9' | '9:16' = '16:9', onProgress?: (msg: string) => void): Promise<string> {
+  async generateVideo(
+    prompt: string, 
+    userId: string, 
+    aspectRatio: '16:9' | '9:16' = '16:9', 
+    onProgress?: (msg: string) => void
+  ): Promise<string> {
+    onProgress?.("Validating Neural Credentials...");
+    
+    // Check for required API Key selection for Veo models
+    const aistudio = (window as any).aistudio;
+    if (aistudio && !(await aistudio.hasSelectedApiKey())) {
+      await aistudio.openSelectKey();
+    }
+
     onProgress?.("Initiating Veo Cinematic Synthesis...");
     
     try {
@@ -127,24 +134,19 @@ export class GeminiService {
         }
       });
 
-      onProgress?.("Neural core processing temporal vectors... (Estimated: 1-2m)");
+      onProgress?.("Neural core processing temporal vectors...");
 
-      // Poll neural operation until synthesis is finalized
       while (!operation.done) {
         await new Promise(resolve => setTimeout(resolve, 10000));
         operation = await ai.operations.getVideosOperation({ operation: operation });
+        onProgress?.("Synthesizing motion frames...");
       }
 
       const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-      if (!downloadLink) {
-        throw new Error("Failed to retrieve finalized cinematic synthesis.");
-      }
+      if (!downloadLink) throw new Error("Video synthesis failed: Missing download URI.");
 
-      // Securely fetch MP4 data utilizing current neural key
       const videoResponse = await fetch(`${downloadLink}&key=${process.env.API_KEY}`);
-      if (!videoResponse.ok) {
-        throw new Error("Failed to download synthesized motion node.");
-      }
+      if (!videoResponse.ok) throw new Error("Failed to retrieve synthesized motion packet.");
 
       const blob = await videoResponse.blob();
       return URL.createObjectURL(blob);
