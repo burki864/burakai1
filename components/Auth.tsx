@@ -12,6 +12,20 @@ interface AuthProps {
 
 const GOOGLE_CLIENT_ID = "34381438602-ae66ti1n83a95rqlffb2sve23ckf58rt.apps.googleusercontent.com";
 
+/**
+ * Generates a valid UUID v4 for database compatibility.
+ */
+function generateUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
@@ -94,8 +108,9 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     // Simulate neural uplink
     setTimeout(async () => {
       try {
+        // ID must be a valid UUID for Supabase profiles table
         const user: User = {
-          id: 'neural-' + Math.random().toString(36).substr(2, 9),
+          id: generateUUID(),
           email: `${cleanName.toLowerCase().replace(/\s+/g, '.')}@burakai.local`,
           name: cleanName,
           provider: 'email',
@@ -109,6 +124,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         
         onLogin(user);
       } catch (err: any) {
+        console.error("Uplink Error details:", err);
         setError(err.message || "Uplink Error.");
       } finally {
         setLoading(false);
@@ -136,7 +152,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     if ((e.target as HTMLElement).closest('button, input, textarea, a')) return;
     if (window.innerWidth < 1024) return;
     setIsDragging(true);
-    setDragStart({ x: e.clientX - position.x, y: e.clientY - position.y });
+    setDragStart({ x: e.clientX - position.x, y: e.clientY - dragStart.x });
   };
 
   useEffect(() => {
