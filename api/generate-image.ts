@@ -12,6 +12,21 @@ export default async function handler(req: any, res: any) {
 
   try {
     const { prompt, aspectRatio = "1:1" } = req.body;
+    // Türkçe image tetikleyici kontrolü (sadece ekleme)
+    let finalPrompt = prompt.trim();
+    const lower = finalPrompt.toLowerCase();
+    const triggers = ["resim", "görsel", "çiz"];
+
+    const hasTrigger = triggers.some(t => lower.includes(t));
+    if (!hasTrigger) {
+      return res.status(400).json({ error: "Image trigger word not found." });
+    }
+
+    // tetik kelimeleri prompttan temizle
+    triggers.forEach(t => {
+      finalPrompt = finalPrompt.replace(new RegExp(t, "gi"), "");
+    });
+    finalPrompt = finalPrompt.trim();
 
     if (!prompt) {
       return res.status(400).json({ error: 'Prompt is required' });
@@ -27,7 +42,7 @@ export default async function handler(req: any, res: any) {
     // Using gemini-2.5-flash-image as per guidelines
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
-      contents: [{ parts: [{ text: `Generate a high-quality, cinematic, ultra-realistic image of: ${prompt}` }] }],
+      contents: [{ parts: [{ text: `Generate a high-quality, cinematic, ultra-realistic image of: ${finalPrompt}` }] }],
       config: {
         imageConfig: {
           aspectRatio: aspectRatio as any || "1:1"
