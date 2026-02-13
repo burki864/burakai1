@@ -1,6 +1,4 @@
 
-import { GoogleGenAI } from "@google/genai";
-
 export const config = {
   runtime: 'nodejs',
 };
@@ -12,8 +10,7 @@ export default async function handler(req: any, res: any) {
 
   try {
     const { prompt, aspectRatio = "1:1" } = req.body;
-    // Türkçe image tetikleyici kontrolü (sadece ekleme)
-    let finalPrompt = prompt.trim();
+    let finalPrompt = prompt ? prompt.trim() : "";
     const lower = finalPrompt.toLowerCase();
     const triggers = ["resim", "görsel", "çiz"];
 
@@ -22,48 +19,51 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: "Image trigger word not found." });
     }
 
-    // tetik kelimeleri prompttan temizle
+    // Clean trigger words from the prompt
     triggers.forEach(t => {
       finalPrompt = finalPrompt.replace(new RegExp(t, "gi"), "");
     });
     finalPrompt = finalPrompt.trim();
 
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt is required' });
+    if (!finalPrompt) {
+      return res.status(400).json({ error: 'Prompt content is required after cleaning trigger words.' });
     }
 
-    const API_KEY = process.env.API_KEY;
-    if (!API_KEY) {
-      return res.status(500).json({ error: 'Neural link failed: API_KEY is missing.' });
+    const HF_TOKEN = process.env.HF_TOKEN;
+    if (!HF_TOKEN) {
+      return res.status(500).json({ error: 'Neural link failed: HF_TOKEN is missing.' });
     }
 
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
+    // Call HuggingFace Inference API for FLUX.1-schnell
+    const response = await fetch(
+      "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-schnell",
+      {
+        headers: {
+          Authorization: `Bearer ${HF_TOKEN}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+        body: JSON.stringify({
+          inputs: finalPrompt,
+          parameters: {
+            num_inference_steps: 6,
+            guidance_scale: 2.5
+          }
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HuggingFace API error: ${errorText}`);
+    }
+
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64Data = buffer.toString('base64');
     
-    // Using gemini-2.5-flash-image as per guidelines
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash-image',
-      contents: [{ parts: [{ text: `Generate a high-quality, cinematic, ultra-realistic image of: ${finalPrompt}` }] }],
-      config: {
-        imageConfig: {
-          aspectRatio: aspectRatio as any || "1:1"
-        }
-      }
-    });
-
-    let imageUrl = '';
-    // Iterate through parts to find the image data
-    if (response.candidates?.[0]?.content?.parts) {
-      for (const part of response.candidates[0].content.parts) {
-        if (part.inlineData) {
-          imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
-          break;
-        }
-      }
-    }
-
-    if (!imageUrl) {
-      throw new Error("No image data returned from neural core.");
-    }
+    // Most models return image/jpeg or image/png
+    const imageUrl = `data:image/jpeg;base64,${base64Data}`;
 
     return res.status(200).json({ imageUrl });
 
