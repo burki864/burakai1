@@ -6,7 +6,6 @@ import {
   Moon, 
   Sun, 
   Shield, 
-  Bell, 
   LogOut, 
   Cpu,
   Type as TypeIcon,
@@ -21,7 +20,7 @@ import {
   CheckCircle,
   Search,
   Clock,
-  Layout
+  Snowflake
 } from 'lucide-react';
 import { SettingsState, User, Language, Personality, ThemeType } from '../types';
 import { TRANSLATIONS } from '../constants';
@@ -75,12 +74,14 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
-  const themes: { id: ThemeType; icon: React.ReactNode; label: string; colorClass: string; activeColor: string }[] = [
-    { id: 'default', icon: <Box size={18} />, label: 'Standard', colorClass: 'text-blue-400', activeColor: 'bg-blue-600/20 border-blue-500 shadow-blue-500/20' },
-    { id: 'rain', icon: <CloudRain size={18} />, label: 'Rain Fall', colorClass: 'text-cyan-400', activeColor: 'bg-cyan-600/20 border-cyan-500 shadow-cyan-500/20' },
-    { id: 'desert', icon: <SunIcon size={18} />, label: 'Sahara', colorClass: 'text-orange-400', activeColor: 'bg-orange-600/20 border-orange-500 shadow-orange-500/20' },
-    { id: 'nebula', icon: <Sparkles size={18} />, label: 'Deep Space', colorClass: 'text-purple-400', activeColor: 'bg-purple-600/20 border-purple-500 shadow-purple-500/20' },
-    { id: 'cyberpunk', icon: <Zap size={18} />, label: 'Neon Grid', colorClass: 'text-pink-400', activeColor: 'bg-pink-600/20 border-pink-500 shadow-pink-500/20' }
+  // Fixed: Use React.ReactElement instead of React.ReactNode to allow for safe prop injection with React.cloneElement
+  const themes: { id: ThemeType; icon: React.ReactElement; label: string; colorClass: string; activeColor: string }[] = [
+    { id: 'default', icon: <Box />, label: 'Standard', colorClass: 'text-blue-400', activeColor: 'bg-blue-600/20 border-blue-500 shadow-blue-500/20' },
+    { id: 'nebula', icon: <Sparkles />, label: 'Space', colorClass: 'text-purple-400', activeColor: 'bg-purple-600/20 border-purple-500 shadow-purple-500/20' },
+    { id: 'cyberpunk', icon: <Zap />, label: 'Neon', colorClass: 'text-pink-400', activeColor: 'bg-pink-600/20 border-pink-500 shadow-pink-500/20' },
+    { id: 'rain', icon: <CloudRain />, label: 'Rain', colorClass: 'text-cyan-400', activeColor: 'bg-cyan-600/20 border-cyan-500 shadow-cyan-500/20' },
+    { id: 'snow', icon: <Snowflake />, label: 'Snow', colorClass: 'text-slate-300', activeColor: 'bg-slate-400/20 border-slate-400 shadow-slate-400/20' },
+    { id: 'desert', icon: <SunIcon />, label: 'Sahara', colorClass: 'text-orange-400', activeColor: 'bg-orange-600/20 border-orange-500 shadow-orange-500/20' }
   ];
 
   return (
@@ -146,7 +147,7 @@ const Settings: React.FC<SettingsProps> = ({
             </div>
           </div>
           
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 md:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 md:gap-4">
             {themes.map((theme) => (
               <button 
                 key={theme.id}
@@ -154,8 +155,8 @@ const Settings: React.FC<SettingsProps> = ({
                 className={`flex flex-col items-center gap-3 md:gap-4 p-4 md:p-5 rounded-2xl sm:rounded-[2rem] border transition-all relative overflow-hidden group ${settings.activeTheme === theme.id ? theme.activeColor + ' scale-105' : 'glass-panel border-white/5 text-slate-500 hover:bg-white/5'}`}
               >
                 <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl bg-white/5 transition-transform group-hover:scale-110 ${settings.activeTheme === theme.id ? theme.colorClass : ''}`}>
-                  {/* Fixed TS error by casting theme.icon to React.ReactElement<any> to allow size prop injection */}
-                  {React.cloneElement(theme.icon as React.ReactElement<any>, { size: 16 })}
+                  {/* Fixed: Cast to React.ReactElement<any> to allow 'size' prop to be passed via cloneElement */}
+                  {React.cloneElement(theme.icon as React.ReactElement<any>, { size: 18 })}
                 </div>
                 <span className="text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase tracking-widest text-center">{theme.label}</span>
                 {settings.activeTheme === theme.id && (
@@ -215,104 +216,6 @@ const Settings: React.FC<SettingsProps> = ({
               >
                 <div className={`w-4 h-4 sm:w-6 sm:h-6 rounded-full bg-white transition-transform ${settings.searchEnabled ? 'translate-x-6 sm:translate-x-6' : 'translate-x-0'}`}></div>
               </button>
-            </div>
-
-            {/* Timestamps */}
-            <div className="p-4 sm:p-6 rounded-2xl sm:rounded-[2.5rem] glass-panel border-white/5 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 md:gap-4 min-w-0">
-                <div className="p-2.5 rounded-xl bg-slate-900 text-slate-400 shrink-0">
-                  <Clock size={18} />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-black text-xs sm:text-sm uppercase tracking-tight truncate">Temporal Logic</p>
-                  <p className="text-[8px] sm:text-[10px] text-slate-500 font-bold uppercase truncate">Message Timestamps</p>
-                </div>
-              </div>
-              <button 
-                onClick={() => update('showTimestamps', !settings.showTimestamps)}
-                className={`w-12 h-6 sm:w-14 sm:h-8 rounded-full p-1 transition-colors shrink-0 ${settings.showTimestamps ? 'bg-[var(--accent-primary)]' : 'bg-slate-800'}`}
-              >
-                <div className={`w-4 h-4 sm:w-6 sm:h-6 rounded-full bg-white transition-transform ${settings.showTimestamps ? 'translate-x-6 sm:translate-x-6' : 'translate-x-0'}`}></div>
-              </button>
-            </div>
-
-             {/* Language Selection */}
-             <div className="p-4 sm:p-6 rounded-2xl sm:rounded-[2.5rem] glass-panel border-white/5 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3 md:gap-4 min-w-0">
-                <div className="p-2.5 rounded-xl bg-slate-900 text-slate-400 shrink-0">
-                  <Globe size={18} />
-                </div>
-                <div className="min-w-0">
-                  <p className="font-black text-xs sm:text-sm uppercase tracking-tight truncate">Linguistic Node</p>
-                  <p className="text-[8px] sm:text-[10px] text-slate-500 font-bold uppercase truncate">Primary Language</p>
-                </div>
-              </div>
-              <select 
-                value={settings.language}
-                onChange={(e) => update('language', e.target.value)}
-                className="bg-slate-900 border border-white/10 rounded-xl px-3 py-1.5 sm:px-4 sm:py-2 text-[10px] sm:text-xs font-black outline-none uppercase tracking-widest shrink-0"
-              >
-                {Object.values(Language).map(l => (
-                  <option key={l} value={l}>{l}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-        </section>
-
-        {/* Advanced Model Parameters */}
-        <section className="space-y-4 md:space-y-6">
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-cyan-500/20 text-cyan-400">
-              <Cpu size={20} className="sm:w-6 sm:h-6" />
-            </div>
-            <div>
-              <h2 className="text-xl sm:text-2xl font-black tracking-tight">{t.aiEngine}</h2>
-              <p className="text-slate-500 text-[9px] sm:text-sm font-bold uppercase tracking-widest">{t.aiEngineSub}</p>
-            </div>
-          </div>
-          
-          <div className="p-5 sm:p-8 rounded-2xl sm:rounded-[2.5rem] glass-panel border-white/5 space-y-8 md:space-y-10">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <label className="font-black text-[10px] sm:text-xs uppercase tracking-[0.2em] flex items-center gap-2 sm:gap-3">
-                <TypeIcon size={14} className="text-slate-500" /> Behavioral Pattern
-              </label>
-              <select 
-                value={settings.personality}
-                onChange={(e) => update('personality', e.target.value)}
-                className="bg-slate-900 border border-white/10 rounded-xl px-4 py-2.5 sm:px-6 sm:py-3 text-xs sm:text-sm font-black outline-none uppercase tracking-widest"
-              >
-                {Object.values(Personality).map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-4 md:space-y-6">
-              <div className="flex items-center justify-between">
-                <label className="font-black text-[10px] sm:text-xs uppercase tracking-[0.2em]">Entropy Level (Creativity)</label>
-                <span className="text-xs sm:text-sm font-mono text-[var(--accent-primary)] font-black px-2.5 py-1 rounded-lg bg-[var(--accent-primary)]/10">{(settings.creativity * 100).toFixed(0)}%</span>
-              </div>
-              <input 
-                type="range" min="0" max="1" step="0.1" value={settings.creativity}
-                onChange={(e) => update('creativity', parseFloat(e.target.value))}
-                className="w-full h-1.5 sm:h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer shadow-inner"
-                style={{ accentColor: 'var(--accent-primary)' }}
-              />
-              <div className="flex justify-between text-[7px] sm:text-[8px] font-black text-slate-600 uppercase tracking-widest">
-                <span>Deterministic</span>
-                <span>Hallucinogenic</span>
-              </div>
-            </div>
-
-            <div className="space-y-3 md:space-y-4">
-              <label className="font-black text-[10px] sm:text-xs uppercase tracking-[0.2em] block">Core Directives (System Prompt)</label>
-              <textarea 
-                value={settings.systemPrompt}
-                onChange={(e) => update('systemPrompt', e.target.value)}
-                rows={4}
-                className="w-full bg-slate-900/50 border border-white/10 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-xs sm:text-sm font-bold focus:border-[var(--accent-primary)] outline-none resize-none transition-all leading-relaxed"
-              />
             </div>
           </div>
         </section>

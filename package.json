@@ -15,7 +15,9 @@
     "vite": "^7.3.1",
     "@vitejs/plugin-react": "^5.1.4",
     "@supabase/supabase-js": "^2.95.3",
-    "@google/genai": "^1.40.0"
+    "@google/genai": "^1.40.0",
+    "framer-motion": "^12.34.0",
+    "buffer": "^6.0.3"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

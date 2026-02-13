@@ -1,5 +1,6 @@
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { User, ChatSession, SettingsState, ImageGeneration, ThemeType, AppView } from './types';
 import { storageService } from './services/storageService';
 import Auth from './components/Auth';
@@ -9,12 +10,15 @@ import ImageGenerator from './components/ImageGenerator';
 import VideoStudio from './components/VideoStudio';
 import Settings from './components/Settings';
 import BannedScreen from './components/BannedScreen';
-import BackgroundTheme from './components/BackgroundTheme';
+import MouseGlow from './components/MouseGlow';
+import IntroAnimation from './components/IntroAnimation';
 import { Menu, X } from 'lucide-react';
-import { TRANSLATIONS } from './constants';
+
+const MotionDiv = motion.div as any;
 
 const App: React.FC = () => {
   const [user, setUser] = useState<User | null>(storageService.getUser());
+  const [showIntro, setShowIntro] = useState(false);
   const [chats, setChats] = useState<ChatSession[]>(storageService.getChats());
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
   const [images, setImages] = useState<ImageGeneration[]>(storageService.getImages());
@@ -27,7 +31,6 @@ const App: React.FC = () => {
   useEffect(() => storageService.saveImages(images), [images]);
   useEffect(() => storageService.saveSettings(settings), [settings]);
 
-  // Inject theme-specific CSS variables to the document root
   useEffect(() => {
     const themeColors: Record<ThemeType, { primary: string; secondary: string; glow: string }> = {
       default: { primary: '#3b82f6', secondary: '#a855f7', glow: 'rgba(59, 130, 246, 0.5)' },
@@ -35,6 +38,7 @@ const App: React.FC = () => {
       desert: { primary: '#f97316', secondary: '#fbbf24', glow: 'rgba(249, 115, 22, 0.5)' },
       nebula: { primary: '#a855f7', secondary: '#ec4899', glow: 'rgba(168, 85, 247, 0.5)' },
       cyberpunk: { primary: '#06b6d4', secondary: '#f472b6', glow: 'rgba(6, 182, 212, 0.5)' },
+      snow: { primary: '#94a3b8', secondary: '#cbd5e1', glow: 'rgba(148, 163, 184, 0.5)' },
     };
 
     const colors = themeColors[settings.activeTheme] || themeColors.default;
@@ -43,7 +47,18 @@ const App: React.FC = () => {
     document.documentElement.style.setProperty('--accent-glow', colors.glow);
   }, [settings.activeTheme]);
 
-  const handleLogout = () => { setUser(null); setActiveChatId(null); setView('chat'); };
+  const handleLogin = (newUser: User) => {
+    setUser(newUser);
+    setShowIntro(true);
+  };
+
+  const handleLogout = () => { 
+    setUser(null); 
+    setActiveChatId(null); 
+    setView('chat'); 
+    setShowIntro(false); 
+    storageService.setUser(null);
+  };
 
   const createNewChat = () => {
     const newChat: ChatSession = { id: Date.now().toString(), title: 'New Neural Link', messages: [], createdAt: Date.now() };
@@ -53,21 +68,26 @@ const App: React.FC = () => {
     setIsSidebarOpen(false);
   };
 
-  const handleUpdateUser = (updatedUser: User) => {
-    setUser(updatedUser);
-  };
-
   const banExpiresAt = user?.profile?.ban_until ? new Date(user.profile.ban_until).getTime() : undefined;
   const isBanned = user?.profile?.banned || (banExpiresAt !== undefined && banExpiresAt > Date.now());
   
   if (isBanned) return <BannedScreen lang={settings.language} expiresAt={banExpiresAt} />;
-  if (!user) return <Auth onLogin={setUser} />;
+  if (!user) return <Auth onLogin={handleLogin} />;
 
   const activeChat = chats.find(c => c.id === activeChatId);
 
   return (
-    <div className={`flex h-[100dvh] w-full transition-all duration-500 overflow-hidden ${settings.darkMode ? 'bg-slate-950 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
-      <BackgroundTheme theme={settings.activeTheme} />
+    <div className={`flex h-[100dvh] w-full transition-all duration-500 overflow-hidden relative ${settings.darkMode ? 'bg-slate-950 text-slate-50' : 'bg-slate-50 text-slate-900'}`}>
+      <MouseGlow />
+
+      <AnimatePresence>
+        {showIntro && (
+          <IntroAnimation 
+            userName={user.name} 
+            onComplete={() => setShowIntro(false)} 
+          />
+        )}
+      </AnimatePresence>
 
       <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="fixed top-3.5 right-4 z-[60] p-2.5 rounded-xl glass-panel border border-white/10 md:hidden transition-transform active:scale-90 shadow-2xl">
         {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
@@ -87,10 +107,23 @@ const App: React.FC = () => {
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-300" />}
 
       <main className="flex-1 flex flex-col relative overflow-hidden h-full">
-        {view === 'chat' && <ChatView chat={activeChat} settings={settings} user={user} onUpdateMessages={(msgs) => activeChatId && setChats(p => p.map(c => c.id === activeChatId ? { ...c, messages: msgs } : c))} onNewChat={createNewChat} />}
-        {view === 'images' && <ImageGenerator images={images} onSaveImage={(img) => setImages(p => [img, ...p])} onDeleteImage={(id) => setImages(p => p.filter(i => i.id !== id))} settings={settings} />}
-        {view === 'video-studio' && <VideoStudio settings={settings} user={user} />}
-        {view === 'settings' && <Settings settings={settings} onUpdateSettings={setSettings} user={user} onLogout={handleLogout} onUpdateUser={handleUpdateUser} />}
+        <AnimatePresence mode="wait">
+          {!showIntro && (
+            <MotionDiv
+              key={view}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              transition={{ duration: 0.4, ease: "easeInOut" }}
+              className="flex-1 h-full"
+            >
+              {view === 'chat' && <ChatView chat={activeChat} settings={settings} user={user} onUpdateMessages={(msgs) => activeChatId && setChats(p => p.map(c => c.id === activeChatId ? { ...c, messages: msgs } : c))} onNewChat={createNewChat} />}
+              {view === 'images' && <ImageGenerator images={images} onSaveImage={(img) => setImages(p => [img, ...p])} onDeleteImage={(id) => setImages(p => p.filter(i => i.id !== id))} settings={settings} />}
+              {view === 'video-studio' && <VideoStudio settings={settings} user={user} />}
+              {view === 'settings' && <Settings settings={settings} onUpdateSettings={setSettings} user={user} onLogout={handleLogout} onUpdateUser={setUser} />}
+            </MotionDiv>
+          )}
+        </AnimatePresence>
       </main>
     </div>
   );

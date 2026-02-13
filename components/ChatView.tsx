@@ -1,9 +1,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Send, User as UserIcon, Plus, Loader2, AlertCircle, 
   Search, Globe, Camera, Image as ImageIcon, Paperclip, 
-  X, ExternalLink, Zap, Video, FileText
+  X, ExternalLink, Zap, Video, FileText, MessageSquare,
+  File as FileIcon, FileImage
 } from 'lucide-react';
 import { ChatSession, Message, SettingsState, Attachment, User } from '../types';
 import { geminiService } from '../services/geminiService';
@@ -12,6 +14,8 @@ import { sendMessage as persistMessage } from '../services/supabase';
 import { TRANSLATIONS, INTENT_KEYWORDS } from '../constants';
 import Logo from './Logo';
 import GenerationAnimation from './GenerationAnimation';
+import BackgroundTheme from './BackgroundTheme';
+import FeedbackModal from './FeedbackModal';
 
 interface ChatViewProps {
   chat?: ChatSession;
@@ -27,11 +31,11 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
   const [streamingMessage, setStreamingMessage] = useState('');
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [isHovered, setIsHovered] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [showCamera, setShowCamera] = useState(false);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
+  const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -49,236 +53,162 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
     return 'text';
   };
 
-  const checkVideoRateLimit = (): boolean => {
-    const lastTs = storageService.getLastVideoTimestamp();
-    const now = Date.now();
-    if (now - lastTs < 60000) {
-      const remaining = Math.ceil((60000 - (now - lastTs)) / 1000);
-      setError(`${TRANSLATIONS[settings.language].chat.rateLimit} (${remaining}s)`);
-      return false;
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newAttachments: Attachment[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const reader = new FileReader();
+      
+      const attachmentPromise = new Promise<Attachment>((resolve) => {
+        reader.onload = (event) => {
+          const base64Data = (event.target?.result as string).split(',')[1];
+          resolve({
+            type: file.type.startsWith('image/') ? 'image' : 'file',
+            data: base64Data,
+            mimeType: file.type || 'application/octet-stream',
+            name: file.name
+          });
+        };
+      });
+      reader.readAsDataURL(file);
+      newAttachments.push(await attachmentPromise);
     }
-    return true;
+
+    setAttachments(prev => [...prev, ...newAttachments]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setShowCamera(true);
-      }
-    } catch (err) {
-      setError("Vision Restricted. Camera access denied.");
-    }
-  };
-
-  const stopCamera = () => {
-    if (videoRef.current?.srcObject) {
-      (videoRef.current.srcObject as MediaStream).getTracks().forEach(t => t.stop());
-    }
-    setShowCamera(false);
+  const removeAttachment = (index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSend = async () => {
     const cleanInput = input.trim();
     if ((!cleanInput && attachments.length === 0) || isTyping) return;
 
+    if (!chat) {
+        onNewChat();
+        setTimeout(() => setError("Neural Link Initialized. Please re-send your command."), 100);
+        return;
+    }
+
     const intent = detectIntent(cleanInput);
-    
     if (intent === 'video') {
       const aistudio = (window as any).aistudio;
       if (aistudio && !(await aistudio.hasSelectedApiKey())) {
-        try {
-          await aistudio.openSelectKey();
-        } catch (e) {
-          setError("API Key selection is mandatory for Video Synthesis.");
-          return;
-        }
+        try { await aistudio.openSelectKey(); } catch (e) { setError("API Key required for Video."); return; }
       }
-      if (!checkVideoRateLimit()) return;
     }
 
-    try {
-      if (cleanInput) await persistMessage(user.id, cleanInput);
-    } catch (err) {
-      console.warn("Persistence bypassed:", err);
-    }
-
-    const userMsg: Message = { 
-      id: Date.now().toString(), 
-      role: 'user', 
-      content: cleanInput, 
-      timestamp: Date.now(), 
-      attachments: [...attachments] 
-    };
-    
-    const currentMessages = chat?.messages || [];
+    const userMsg: Message = { id: Date.now().toString(), role: 'user', content: cleanInput, timestamp: Date.now(), attachments: [...attachments] };
+    const currentMessages = chat.messages || [];
     const newMessages = [...currentMessages, userMsg];
-    
-    if (!chat) return onNewChat();
     onUpdateMessages(newMessages);
-    
     setInput('');
     setAttachments([]);
     setIsTyping(true);
     setError(null);
 
     if (intent === 'image') {
-      const genMsg: Message = { 
-        id: 'gen-' + Date.now(), 
-        role: 'assistant', 
-        content: '', 
-        timestamp: Date.now(), 
-        isGenerating: true, 
-        generationType: 'image' 
-      };
-      
+      const genMsg: Message = { id: 'gen-' + Date.now(), role: 'assistant', content: '', timestamp: Date.now(), isGenerating: true, generationType: 'image' };
       onUpdateMessages([...newMessages, genMsg]);
-      
       try {
         const url = await geminiService.generateImage(cleanInput);
-        onUpdateMessages([...newMessages, { 
-          ...genMsg, 
-          isGenerating: false, 
-          imageUrl: url 
-        }]);
-      } catch (e: any) {
-        setError(e.message);
-        onUpdateMessages(newMessages);
-      }
+        onUpdateMessages([...newMessages, { ...genMsg, isGenerating: false, imageUrl: url }]);
+      } catch (e: any) { setError(e.message); onUpdateMessages(newMessages); }
       setIsTyping(false);
     } else if (intent === 'video') {
-      const genMsg: Message = { 
-        id: 'gen-v-' + Date.now(), 
-        role: 'assistant', 
-        content: '', 
-        timestamp: Date.now(), 
-        isGenerating: true, 
-        generationType: 'video' 
-      };
-      
+      const genMsg: Message = { id: 'gen-v-' + Date.now(), role: 'assistant', content: '', timestamp: Date.now(), isGenerating: true, generationType: 'video' };
       onUpdateMessages([...newMessages, genMsg]);
-      
       try {
-        storageService.setLastVideoTimestamp(Date.now());
         const url = await geminiService.generateVideo(cleanInput, user.id, '16:9');
-        onUpdateMessages([...newMessages, { 
-          ...genMsg, 
-          isGenerating: false, 
-          videoUrl: url 
-        }]);
-      } catch (e: any) {
-        if (e.message?.includes("Requested entity was not found") && (window as any).aistudio) {
-          await (window as any).aistudio.openSelectKey();
-        }
-        setError(e.message);
-        onUpdateMessages(newMessages);
-      }
+        onUpdateMessages([...newMessages, { ...genMsg, isGenerating: false, videoUrl: url }]);
+      } catch (e: any) { setError(e.message); onUpdateMessages(newMessages); }
       setIsTyping(false);
     } else {
       try {
-        const fullResponse = await geminiService.generateTextStream(
-          cleanInput, 
-          newMessages, 
-          settings, 
-          userMsg.attachments || [], 
-          (chunk) => setStreamingMessage(prev => prev + chunk)
-        );
-        
-        onUpdateMessages([...newMessages, { 
-          id: Date.now().toString(), 
-          role: 'assistant', 
-          content: fullResponse, 
-          timestamp: Date.now() 
-        }]);
-      } catch (err: any) {
-        setError(err.message);
-      } finally {
-        setIsTyping(false);
-        setStreamingMessage('');
-      }
+        const fullResponse = await geminiService.generateTextStream(cleanInput, newMessages, settings, userMsg.attachments || [], (chunk) => setStreamingMessage(prev => prev + chunk));
+        onUpdateMessages([...newMessages, { id: Date.now().toString(), role: 'assistant', content: fullResponse, timestamp: Date.now() }]);
+      } catch (err: any) { setError(err.message); } finally { setIsTyping(false); setStreamingMessage(''); }
     }
   };
 
   const t = TRANSLATIONS[settings.language].chat;
 
   return (
-    <div className={`flex-1 flex flex-col min-h-0 relative overflow-hidden transition-all ${isDraggingFile ? 'bg-blue-600/5 ring-2 ring-blue-500/20' : 'bg-transparent'}`}
+    <div 
+      className={`flex-1 flex flex-col min-h-0 relative overflow-hidden transition-all h-full ${isDraggingFile ? 'bg-blue-600/5' : 'bg-transparent'}`}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
       onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }} 
       onDragLeave={() => setIsDraggingFile(false)}
-      onDrop={(e) => { e.preventDefault(); setIsDraggingFile(false); }}>
+      onDrop={(e) => { e.preventDefault(); setIsDraggingFile(false); }}
+    >
+      {/* LOCAL THEME OVERLAY */}
+      <div className="absolute inset-0 pointer-events-none z-[1] overflow-hidden">
+        <BackgroundTheme theme={settings.activeTheme} />
+      </div>
       
-      <header className="px-4 py-3 md:px-8 lg:px-10 md:py-6 flex items-center justify-between glass-panel sticky top-0 z-20 border-b border-white/10">
+      {/* UI CONTENT */}
+      <header className="relative z-10 px-4 py-3 md:px-8 lg:px-10 md:py-6 flex items-center justify-between glass-panel border-b border-white/10">
         <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
           <Logo size={32} className="md:w-10 lg:w-12 shrink-0" />
           <div className="min-w-0">
             <h3 className="font-black text-sm sm:text-lg md:text-xl lg:text-2xl tracking-tighter leading-none truncate">{chat?.title || t.welcome}</h3>
             <div className="flex items-center gap-2 mt-0.5 md:mt-1">
-               <span className="text-[7px] sm:text-[8px] md:text-[10px] text-blue-400 font-bold uppercase tracking-widest whitespace-nowrap">Neural Link Active</span>
+               <span className="text-[7px] sm:text-[8px] md:text-[10px] text-blue-400 font-bold uppercase tracking-widest">Neural Link Active</span>
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-            <div className="hidden sm:flex items-center gap-2 px-2 py-1 md:px-3 md:py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                <Zap size={10} className="text-emerald-400 md:w-3 md:h-3" />
-                <span className="text-[7px] md:text-[9px] font-black text-emerald-400 uppercase tracking-widest">Real-time Node</span>
-            </div>
-        </div>
       </header>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 py-6 md:py-12 lg:py-16 space-y-6 md:space-y-10 custom-scrollbar">
+      <div ref={scrollRef} className="relative z-10 flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 py-6 md:py-12 lg:py-16 space-y-6 md:space-y-10 custom-scrollbar">
         {!chat && (
-            <div className="w-full max-w-4xl mx-auto text-center space-y-6 md:space-y-10 py-10 md:py-24 animate-in fade-in zoom-in duration-500">
+            <div className="w-full max-w-4xl mx-auto text-center space-y-6 md:space-y-10 py-10 md:py-24">
                 <Logo size={80} className="mx-auto sm:w-24 sm:h-24 md:w-32 md:h-32 lg:w-48 lg:h-48" />
                 <div className="space-y-2 md:space-y-4">
                   <h2 className="text-3xl sm:text-5xl md:text-6xl lg:text-8xl font-black tracking-tighter leading-tight">{t.welcome}</h2>
                   <p className="text-sm sm:text-xl md:text-2xl lg:text-3xl text-slate-500 font-bold px-4 max-w-2xl mx-auto">{t.subtitle}</p>
                 </div>
-                <button onClick={onNewChat} className="px-8 py-3 sm:px-10 sm:py-4 md:px-14 md:py-6 rounded-xl sm:rounded-2xl md:rounded-[3rem] bg-blue-600 text-white font-black text-base sm:text-lg md:text-2xl shadow-3xl hover:scale-105 active:scale-95 transition-transform duration-300">
+                <button onClick={onNewChat} className="px-8 py-3 sm:px-10 sm:py-4 md:px-14 md:py-6 rounded-xl sm:rounded-2xl md:rounded-[3rem] bg-blue-600 text-white font-black text-base sm:text-lg md:text-2xl shadow-3xl transition-all">
                     {t.init}
                 </button>
             </div>
         )}
 
         {chat?.messages.map((msg) => (
-          <div key={msg.id} className={`flex gap-3 sm:gap-4 md:gap-8 max-w-5xl mx-auto animate-in slide-in-from-bottom-2 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+          <div key={msg.id} className={`flex gap-3 sm:gap-4 md:gap-8 max-w-5xl mx-auto ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
             <div className={`w-8 h-8 sm:w-10 sm:h-10 md:w-14 md:h-14 lg:w-16 lg:h-16 rounded-lg sm:rounded-xl md:rounded-2xl flex items-center justify-center flex-shrink-0 shadow-lg ${msg.role === 'user' ? 'bg-blue-600 text-white' : 'glass-panel text-blue-400'}`}>
               {msg.role === 'user' ? <UserIcon size={14} className="sm:w-5 sm:h-5 md:w-7 md:h-7" /> : <Logo size={20} className="sm:w-6 sm:h-6 md:w-8 md:h-8" />}
             </div>
             <div className={`flex flex-col space-y-2 sm:space-y-3 md:space-y-5 w-full ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              {msg.isGenerating && (
-                <div className="flex flex-col items-center gap-4 md:gap-6 animate-in zoom-in w-full max-w-[280px] sm:max-w-md">
-                  <GenerationAnimation type={msg.generationType || 'image'} />
-                  {msg.generationType === 'video' && (
-                    <div className="text-center">
-                      <p className="text-[8px] md:text-[10px] font-black text-blue-400 uppercase tracking-[0.4em] animate-pulse">Neural synthesis in progress</p>
-                      <p className="text-[7px] md:text-[8px] text-slate-500 font-bold uppercase tracking-widest mt-1">Completion: 1-3 minutes</p>
+              {msg.isGenerating && <GenerationAnimation type={msg.generationType || 'image'} />}
+              
+              {/* User Attachments in History */}
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  {msg.attachments.map((att, i) => (
+                    <div key={i} className="max-w-[200px] rounded-xl overflow-hidden glass-panel border border-white/10 shadow-lg">
+                      {att.type === 'image' ? (
+                        <img src={`data:${att.mimeType};base64,${att.data}`} className="w-full h-auto object-cover max-h-40" alt="Attachment" />
+                      ) : (
+                        <div className="p-3 flex items-center gap-2 text-xs font-bold text-slate-300">
+                          <FileIcon size={16} className="text-blue-400" />
+                          <span className="truncate">{att.name || 'File'}</span>
+                        </div>
+                      )}
                     </div>
-                  )}
+                  ))}
                 </div>
               )}
-              
-              {msg.imageUrl && (
-                <div className="w-full max-w-[85%] sm:max-w-[70%] md:max-w-[400px]">
-                  <img 
-                    key={msg.id + '-img'}
-                    src={msg.imageUrl} 
-                    className="w-full aspect-square object-cover rounded-xl sm:rounded-2xl md:rounded-[2.5rem] lg:rounded-[3rem] shadow-2xl border border-white/10 animate-in zoom-in duration-300" 
-                    alt="Neural Synthesis"
-                  />
-                </div>
-              )}
-              
-              {msg.videoUrl && (
-                <div className="w-full max-w-[95%] sm:max-w-[80%] md:max-w-[600px] rounded-xl sm:rounded-2xl md:rounded-[2.5rem] lg:rounded-[3rem] shadow-2xl border border-white/10 overflow-hidden ring-4 ring-blue-500/5 animate-in zoom-in duration-500">
-                  <video key={msg.id + '-vid'} controls autoPlay loop playsInline className="w-full">
-                     <source src={msg.videoUrl} type="video/mp4" />
-                  </video>
-                </div>
-              )}
-              
+
+              {msg.imageUrl && <div className="w-full max-w-[400px]"><img src={msg.imageUrl} className="w-full aspect-square object-cover rounded-[2rem] shadow-2xl border border-white/10" alt="Neural" /></div>}
+              {msg.videoUrl && <div className="w-full max-w-[600px] rounded-[2rem] overflow-hidden shadow-2xl"><video controls autoPlay loop className="w-full"><source src={msg.videoUrl} type="video/mp4" /></video></div>}
               {msg.content && (
-                <div className={`p-3.5 sm:p-5 md:p-8 lg:p-10 rounded-2xl sm:rounded-[2rem] md:rounded-[3rem] lg:rounded-[3.5rem] text-sm sm:text-base md:text-xl lg:text-2xl font-bold leading-relaxed shadow-xl chat-bubble max-w-[88%] sm:max-w-[82%] md:max-w-[75%] ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'glass-panel border-white/5 text-slate-100 rounded-tl-none'}`}>
+                <div className={`p-4 sm:p-6 md:p-8 lg:p-10 rounded-2xl sm:rounded-[2.5rem] md:rounded-[3rem] text-sm sm:text-base md:text-xl lg:text-2xl font-bold shadow-xl chat-bubble max-w-[88%] ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'glass-panel text-slate-100 rounded-tl-none'}`}>
                   {msg.content}
                 </div>
               )}
@@ -288,61 +218,88 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
 
         {streamingMessage && (
             <div className="flex gap-3 sm:gap-4 md:gap-8 max-w-5xl mx-auto">
-                <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-14 md:h-14 lg:w-16 lg:h-16 rounded-lg sm:rounded-xl md:rounded-2xl glass-panel flex items-center justify-center flex-shrink-0"><Logo size={18} className="sm:w-6 sm:h-6 md:w-8 md:h-8" /></div>
-                <div className="p-3.5 sm:p-5 md:p-8 lg:p-10 rounded-2xl sm:rounded-[2rem] md:rounded-[3rem] lg:rounded-[3.5rem] glass-panel text-sm sm:text-base md:text-xl lg:text-2xl font-bold flex-1 shadow-xl text-slate-100 chat-bubble max-w-[88%] sm:max-w-[82%] md:max-w-[75%] rounded-tl-none">
-                  {streamingMessage}
-                  <span className="inline-block w-1.5 md:w-2 h-4 md:h-5 ml-1 bg-blue-500 animate-pulse"></span>
+                <div className="w-8 h-8 sm:w-10 sm:h-10 md:w-14 md:h-14 lg:w-16 lg:h-16 rounded-lg sm:rounded-xl md:rounded-2xl glass-panel flex items-center justify-center flex-shrink-0"><Logo size={18} /></div>
+                <div className="p-4 sm:p-6 md:p-8 lg:p-10 rounded-2xl sm:rounded-[2.5rem] md:rounded-[3rem] glass-panel text-sm sm:text-base md:text-xl lg:text-2xl font-bold flex-1 shadow-xl text-slate-100 rounded-tl-none">
+                  {streamingMessage}<span className="inline-block w-2 h-5 ml-1 bg-blue-500 animate-pulse"></span>
                 </div>
             </div>
         )}
       </div>
 
-      <div className="px-4 pb-4 sm:px-6 sm:pb-6 md:px-10 md:pb-10 bg-gradient-to-t from-slate-950 to-transparent">
+      <div className="relative z-10 px-4 pb-4 sm:px-6 sm:pb-6 md:px-10 md:pb-10 bg-gradient-to-t from-slate-950/80 to-transparent">
         <div className="max-w-4xl mx-auto space-y-2 md:space-y-4">
-            {error && (
-              <div className="p-2 sm:p-3 rounded-xl sm:rounded-2xl bg-red-500/10 border border-red-500/20 text-red-400 text-[9px] sm:text-[10px] md:text-xs font-black flex items-center gap-2 animate-in fade-in slide-in-from-top-1">
-                <AlertCircle size={14} className="shrink-0" /> <span className="truncate">{error}</span>
-              </div>
-            )}
+            {error && <div className="p-2 sm:p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-black flex items-center gap-2"><AlertCircle size={14}/><span>{error}</span></div>}
             
-            <div className="glass-panel rounded-2xl sm:rounded-[2rem] md:rounded-[3rem] border-white/10 p-1.5 md:p-4 shadow-3xl">
+            {/* Pending Attachments UI */}
+            <AnimatePresence>
+              {attachments.length > 0 && (
+                <motion.div 
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: 10 }}
+                  className="flex flex-wrap gap-2 mb-2 p-2"
+                >
+                  {attachments.map((att, i) => (
+                    <div key={i} className="relative group p-2 glass-panel border border-blue-500/30 rounded-xl flex items-center gap-2 pr-8 animate-in fade-in slide-in-from-bottom-2">
+                      {att.type === 'image' ? <FileImage size={14} className="text-blue-400" /> : <FileIcon size={14} className="text-blue-400" />}
+                      <span className="text-[10px] font-bold text-slate-300 truncate max-w-[120px]">{att.name}</span>
+                      <button 
+                        onClick={() => removeAttachment(i)}
+                        className="absolute right-1 top-1/2 -translate-y-1/2 p-1 text-slate-500 hover:text-red-400 transition-colors"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="glass-panel rounded-2xl sm:rounded-[2.5rem] md:rounded-[3rem] border-white/10 p-1.5 md:p-4 shadow-3xl">
                 <textarea 
-                    rows={1} 
-                    value={input}
-                    onChange={(e) => { 
-                      setInput(e.target.value); 
-                      e.target.style.height = 'auto'; 
-                      e.target.style.height = `${Math.min(e.target.scrollHeight, 160)}px`; 
-                    }}
+                    rows={1} value={input} onChange={(e) => setInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
                     placeholder={t.placeholder}
-                    className="w-full bg-transparent border-none focus:ring-0 p-3 sm:p-4 md:p-6 text-white font-bold text-base sm:text-lg md:text-2xl lg:text-3xl placeholder-slate-700 resize-none min-h-[50px]" />
-                <div className="flex items-center justify-between px-2 sm:px-4 md:px-6 py-2 md:py-3 border-t border-white/5">
-                    <div className="flex items-center gap-1 md:gap-2">
-                        <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-500 hover:text-blue-400 transition-colors"><Paperclip size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" /></button>
-                        <button onClick={startCamera} className="p-2 text-slate-500 hover:text-purple-400 transition-colors"><Camera size={18} className="sm:w-5 sm:h-5 md:w-6 md:h-6" /></button>
+                    className="w-full bg-transparent border-none focus:ring-0 p-3 sm:p-4 md:p-6 text-white font-bold text-base sm:text-lg md:text-2xl placeholder-slate-700 resize-none" />
+                <div className="flex items-center justify-between px-4 py-2 border-t border-white/5">
+                    <div className="flex items-center gap-2">
+                        <input 
+                          type="file" 
+                          ref={fileInputRef} 
+                          onChange={handleFileChange} 
+                          className="hidden" 
+                          multiple 
+                        />
+                        <button 
+                          onClick={() => fileInputRef.current?.click()}
+                          className="p-2 text-slate-500 hover:text-blue-400 transition-all hover:scale-110"
+                        >
+                          <Paperclip size={18}/>
+                        </button>
+                        <button 
+                          onClick={() => setIsFeedbackOpen(true)}
+                          className="p-2 text-slate-500 hover:text-purple-400 flex items-center gap-1.5 transition-colors group"
+                        >
+                          <MessageSquare size={18} className="group-hover:scale-110 transition-transform" />
+                          <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Feedback</span>
+                        </button>
                     </div>
                     <button 
                         onClick={handleSend} 
                         disabled={(!input.trim() && attachments.length === 0) || isTyping}
-                        className={`w-9 h-9 sm:w-11 sm:h-11 md:w-14 md:h-14 lg:w-16 lg:h-16 rounded-xl sm:rounded-2xl md:rounded-[1.8rem] transition-all flex items-center justify-center shrink-0 ${(!input.trim() && attachments.length === 0) || isTyping ? 'bg-slate-900 text-slate-600' : 'bg-blue-600 text-white shadow-3xl hover:scale-105 active:scale-95'}`}>
-                        {isTyping ? <Loader2 size={16} className="animate-spin md:w-6 md:h-6" /> : <Send size={16} className="sm:w-5 sm:h-5 md:w-7 md:h-7 lg:w-8 lg:h-8" />}
+                        className={`w-10 h-10 sm:w-12 sm:h-12 md:w-14 md:h-14 lg:w-16 lg:h-16 rounded-xl sm:rounded-2xl md:rounded-[1.8rem] transition-all flex items-center justify-center ${(!input.trim() && attachments.length === 0) || isTyping ? 'bg-slate-900 text-slate-600' : 'bg-blue-600 text-white shadow-3xl hover:scale-105'}`}>
+                        {isTyping ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
                     </button>
                 </div>
             </div>
         </div>
       </div>
 
-      <input type="file" multiple ref={fileInputRef} className="hidden" />
-      {showCamera && (
-          <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col items-center justify-center p-4 backdrop-blur-3xl">
-              <video ref={videoRef} autoPlay playsInline className="max-w-full max-h-[70vh] rounded-2xl border border-white/10 shadow-3xl" />
-              <div className="flex gap-4 sm:gap-6 mt-8 md:mt-10">
-                  <button onClick={stopCamera} className="p-4 sm:p-5 rounded-full bg-slate-800 text-white hover:bg-slate-700 transition-colors"><X size={20} className="sm:w-6 sm:h-6" /></button>
-                  <button className="p-6 sm:p-8 rounded-full bg-blue-600 border-2 sm:border-4 border-white text-white shadow-2xl active:scale-90 transition-transform"><Camera size={24} className="sm:w-7 sm:h-7" /></button>
-              </div>
-          </div>
-      )}
+      <FeedbackModal 
+        isOpen={isFeedbackOpen} 
+        onClose={() => setIsFeedbackOpen(false)} 
+        userName={user.name} 
+      />
     </div>
   );
 };

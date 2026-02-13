@@ -121,3 +121,27 @@ export const dbService = {
     }
   }
 };
+
+export const feedbackService = {
+  send: async (userName: string, message: string) => {
+    if (!isSupabaseConfigured) {
+      console.warn("Supabase not configured. Simulating feedback success.");
+      return { success: true };
+    }
+    try {
+      const { data, error } = await supabase
+        .from('feedbacks')
+        .insert([
+          { 
+            user_name: userName, 
+            message: message 
+          }
+        ]);
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Feedback submission error:', error);
+      throw error;
+    }
+  }
+};

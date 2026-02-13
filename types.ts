@@ -19,7 +19,7 @@ export interface User {
   profile?: UserProfile;
 }
 
-export type ThemeType = 'default' | 'rain' | 'desert' | 'nebula' | 'cyberpunk';
+export type ThemeType = 'default' | 'rain' | 'desert' | 'nebula' | 'cyberpunk' | 'snow';
 export type AppView = 'chat' | 'images' | 'video-studio' | 'settings';
 
 export enum Personality {
