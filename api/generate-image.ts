@@ -1,13 +1,25 @@
-
 export const config = {
   runtime: 'nodejs',
 };
 
+// Basit bir bellek içi önbellek (In-memory cache)
+// Not: Sunucu restart edilirse bu temizlenir. 
+// Kalıcı çözüm için Redis veya veritabanı gerekebilir.
+const promptCache = new Map<string, string>();
+
 /**
- * BurakAI Neural Image Synthesis
- * Model: black-forest-labs/FLUX.1-schnell
- * Implementation: HuggingFace Inference API
+ * Prompt'tan benzersiz bir sayısal Seed üreten yardımcı fonksiyon
  */
+function generateSeedFromPrompt(prompt: string): number {
+  let hash = 0;
+  for (let i = 0; i < prompt.length; i++) {
+    const char = prompt.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash);
+}
+
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -16,63 +28,45 @@ export default async function handler(req: any, res: any) {
   try {
     const { prompt } = req.body;
     let finalPrompt = prompt ? prompt.trim() : "";
-    
-    // Clean Turkish trigger words: ["resim", "görsel", "çiz"]
-    // Requirement: Clean trigger words before sending to model, do not alter remaining text.
+
+    // Tetikleyici kelimeleri temizle
     const triggers = ["resim", "görsel", "çiz"];
     triggers.forEach(t => {
       finalPrompt = finalPrompt.replace(new RegExp(t, "gi"), "");
     });
-    finalPrompt = finalPrompt.trim();
+    finalPrompt = finalPrompt.trim().toLowerCase(); // Küçük harfe çevirerek cache doğruluğunu artırıyoruz
 
     if (!finalPrompt) {
       return res.status(400).json({ error: 'Vision description is required.' });
     }
 
-    const HF_TOKEN = process.env.HF_TOKEN;
-    if (!HF_TOKEN) {
-      return res.status(500).json({ error: 'Neural link failed: HF_TOKEN is missing.' });
+    // 1. Önce Cache Kontrolü: Aynı prompt daha önce gelmiş mi?
+    if (promptCache.has(finalPrompt)) {
+      console.log(`[CACHE HIT] Returning existing image for: ${finalPrompt}`);
+      return res.status(200).json({ 
+        imageUrl: promptCache.get(finalPrompt),
+        cached: true 
+      });
     }
 
-    // Call HuggingFace Inference API for FLUX.1-schnell
-    // Using the high-speed router endpoint
-    const response = await fetch(
-      "https://router.huggingface.co/hf-inference/models/black-forest-labs/FLUX.1-schnell",
-      {
-        headers: {
-          Authorization: `Bearer ${HF_TOKEN}`,
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-        body: JSON.stringify({
-          inputs: finalPrompt,
-          parameters: {
-            num_inference_steps: 6,
-            guidance_scale: 2.5
-          }
-        }),
-      }
-    );
+    // 2. Prompt'a özel sabit bir Seed üret
+    const fixedSeed = generateSeedFromPrompt(finalPrompt);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`HuggingFace Core Error: ${errorText}`);
-    }
+    // 3. Pollinations URL (model=flux zeka ve sadakat için)
+    const encodedPrompt = encodeURIComponent(finalPrompt);
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?model=flux&width=1024&height=1024&nologo=true&enhance=true&seed=${fixedSeed}`;
 
-    const arrayBuffer = await response.arrayBuffer();
-    
-    // Convert binary data to base64 for frontend display
-    const base64Data = Buffer.from(arrayBuffer).toString('base64');
-    
-    // Return standard data URL for seamless UI integration
-    const imageUrl = `data:image/jpeg;base64,${base64Data}`;
+    // 4. Yeni üretilen URL'yi cache'e kaydet
+    promptCache.set(finalPrompt, pollinationsUrl);
 
-    return res.status(200).json({ imageUrl });
+    return res.status(200).json({ 
+      imageUrl: pollinationsUrl,
+      cached: false,
+      seed: fixedSeed
+    });
 
   } catch (error: any) {
     console.error('[BURAKAI_VISION_ERROR]', error);
-    return res.status(500).json({ 
-      error: error.message || 'Vision synthesis failed. Neural link timeout.' 
-    });
+    return res.status(500).json({ error: 'Vision synthesis failed.' });
   }
 }
