@@ -1,66 +1,69 @@
-
 import { GoogleGenAI } from "@google/genai";
 
 export const config = {
   runtime: 'nodejs',
 };
 
+/**
+ * Handles video generation using the Veo 3.1 Fast model.
+ * Polls for operation completion to return the final MP4 download link.
+ */
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
-  const { prompt, aspectRatio, userId } = req.body;
-
-  if (!prompt || !userId) {
-    return res.status(400).json({ error: 'Missing required parameters: prompt or userId' });
-  }
-
-  const API_KEY = process.env.API_KEY;
-  if (!API_KEY) {
-    return res.status(500).json({ error: 'Neural link failed: API_KEY is missing.' });
-  }
-
   try {
-    const ai = new GoogleGenAI({ apiKey: API_KEY });
+    const { prompt, aspectRatio = '16:9' } = req.body;
+    
+    if (!prompt) {
+      return res.status(400).json({ error: 'Prompt is required for video synthesis.' });
+    }
 
-    // Initiate Veo generation
+    // Initialize the Google GenAI SDK
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    
+    // Initiate video generation operation
     let operation = await ai.models.generateVideos({
       model: 'veo-3.1-fast-generate-preview',
       prompt: prompt,
       config: {
         numberOfVideos: 1,
         resolution: '720p',
-        aspectRatio: aspectRatio === '9:16' ? '9:16' : '16:9'
+        aspectRatio: aspectRatio as any
       }
     });
 
-    // Poll for completion
-    let attempts = 0;
-    const maxAttempts = 15; // 15 * 5s = 75s (Serverless timeout usually around 60s, so this is aggressive)
-    
-    while (!operation.done && attempts < maxAttempts) {
+    // Poll for operation completion. 
+    // Note: Video generation can take time; we poll within the handler's execution window.
+    const startTime = Date.now();
+    const pollTimeout = 50000; // 50 seconds limit for serverless environment
+
+    while (!operation.done && (Date.now() - startTime < pollTimeout)) {
       await new Promise(resolve => setTimeout(resolve, 5000));
-      operation = await ai.operations.getVideosOperation({ operation: operation });
-      attempts++;
+      operation = await ai.operations.getVideosOperation({ operation });
     }
 
+    // If still in progress after timeout, return the operation name for potential client-side polling
     if (!operation.done) {
-      throw new Error("Video synthesis is taking longer than expected. Please check your history in a few moments.");
+      return res.status(202).json({ 
+        message: 'Synthesis in progress. High-quality neural rendering takes time.',
+        operationId: (operation as any).name 
+      });
     }
 
     const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
     if (!downloadLink) {
-      throw new Error("Video synthesis failed: No output URI returned.");
+        throw new Error('Video generation failed: Synthesis result unavailable.');
     }
 
-    // Append API key for download
-    const videoUrl = `${downloadLink}&key=${API_KEY}`;
+    // Secure the download link with the API key as per Veo requirements
+    const videoUrl = `${downloadLink}&key=${process.env.API_KEY}`;
 
     return res.status(200).json({ videoUrl });
 
   } catch (error: any) {
-    console.error('Veo Production Error:', error);
+    console.error('[GENERATE-VIDEO ERROR]', error);
     return res.status(500).json({ error: error.message || 'An internal error occurred during synthesis.' });
   }
 }
