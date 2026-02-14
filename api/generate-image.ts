@@ -2,20 +2,19 @@ export const config = {
   runtime: 'nodejs',
 };
 
-// Basit bir bellek içi önbellek (In-memory cache)
-// Not: Sunucu restart edilirse bu temizlenir. 
-// Kalıcı çözüm için Redis veya veritabanı gerekebilir.
+// In-memory cache: Sunucu açık kaldığı sürece aynı promptları kaydeder.
 const promptCache = new Map<string, string>();
 
 /**
- * Prompt'tan benzersiz bir sayısal Seed üreten yardımcı fonksiyon
+ * Prompt'tan benzersiz bir sayısal Seed üreten yardımcı fonksiyon.
+ * Aynı metne her zaman aynı görselin gelmesini sağlar.
  */
 function generateSeedFromPrompt(prompt: string): number {
   let hash = 0;
   for (let i = 0; i < prompt.length; i++) {
     const char = prompt.charCodeAt(i);
     hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+    hash = hash & hash;
   }
   return Math.abs(hash);
 }
@@ -29,34 +28,38 @@ export default async function handler(req: any, res: any) {
     const { prompt } = req.body;
     let finalPrompt = prompt ? prompt.trim() : "";
 
-    // Tetikleyici kelimeleri temizle
+    // 1. Türkçe tetikleyicileri temizle
     const triggers = ["resim", "görsel", "çiz"];
     triggers.forEach(t => {
       finalPrompt = finalPrompt.replace(new RegExp(t, "gi"), "");
     });
-    finalPrompt = finalPrompt.trim().toLowerCase(); // Küçük harfe çevirerek cache doğruluğunu artırıyoruz
+    finalPrompt = finalPrompt.trim().toLowerCase();
 
     if (!finalPrompt) {
       return res.status(400).json({ error: 'Vision description is required.' });
     }
 
-    // 1. Önce Cache Kontrolü: Aynı prompt daha önce gelmiş mi?
+    // 2. Cache Kontrolü
     if (promptCache.has(finalPrompt)) {
-      console.log(`[CACHE HIT] Returning existing image for: ${finalPrompt}`);
       return res.status(200).json({ 
         imageUrl: promptCache.get(finalPrompt),
         cached: true 
       });
     }
 
-    // 2. Prompt'a özel sabit bir Seed üret
+    // 3. Sabit Seed üret
     const fixedSeed = generateSeedFromPrompt(finalPrompt);
-
-    // 3. Pollinations URL (model=flux zeka ve sadakat için)
     const encodedPrompt = encodeURIComponent(finalPrompt);
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?model=flux&width=1024&height=1024&nologo=true&enhance=true&seed=${fixedSeed}`;
 
-    // 4. Yeni üretilen URL'yi cache'e kaydet
+    /**
+     * 4. POLLINATIONS URL YAPILANDIRMASI (FLUX 1.1 PRO ODAKLI)
+     * - model=flux-pro: En zeki ve sadık model (Muz/Elma ayrımı için en iyisi).
+     * - enhance=false: Boş gelme sorununu önlemek için kapattık. Gerekirse true yapabilirsin.
+     * - width/height=1024: Standart yüksek kalite.
+     */
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?model=flux-pro&width=1024&height=1024&nologo=true&enhance=false&seed=${fixedSeed}`;
+
+    // 5. URL'yi cache'e kaydet
     promptCache.set(finalPrompt, pollinationsUrl);
 
     return res.status(200).json({ 
