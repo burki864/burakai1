@@ -20,9 +20,12 @@ export default async function handler(req: any, res: any) {
       {
         role: "system",
         content:
-          (settings?.systemPrompt ||
-            "You are BurakAI, a high-performance neural assistant.") +
-          "\n\nFORMAT RULES:\n" +
+          (settings?.systemPrompt || "You are BurakAI, a high-performance neural assistant.") +
+          "\n\nVISUAL CAPABILITIES:\n" +
+          "- If the user wants to draw/create an image, or says 'çiz/yap/görselleştir' referring to previous context, you MUST trigger image generation.\n" +
+          "- To trigger, append exactly this to your response: [GENERATE_IMAGE: {detailed_english_prompt}].\n" +
+          "- The prompt inside the bracket must be in English, descriptive, and optimized for Flux 1.1 Pro (mention lighting, style, 8k).\n" +
+          "\nFORMAT RULES:\n" +
           "- ALWAYS separate each idea with a blank line.\n" +
           "- NEVER write dense paragraphs.\n" +
           "- Lists MUST have line breaks.\n",
@@ -38,7 +41,7 @@ export default async function handler(req: any, res: any) {
     ];
 
     const stream = await openai.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "llama-3.3-70b-versatile", // Daha iyi niyet tespiti için 70b modelini öneririm
       messages,
       temperature: settings?.creativity ?? 0.7,
       stream: true,
@@ -55,7 +58,7 @@ export default async function handler(req: any, res: any) {
 
       buffer += content;
 
-      // Güvenli format uygulama
+      // Formatlama ve anlık gönderim
       let formatted = buffer
         .replace(/(\d+\.\s)/g, "\n$1")
         .replace(/(-\s|\*\s)/g, "\n$1")
@@ -68,8 +71,6 @@ export default async function handler(req: any, res: any) {
     res.end();
   } catch (error: any) {
     console.error("Groq Error:", error);
-    res
-      .status(500)
-      .json({ error: error.message || "Groq neural failure." });
+    res.status(500).json({ error: error.message || "Groq neural failure." });
   }
 }
