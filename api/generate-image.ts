@@ -11,7 +11,7 @@ async function optimizeWithGroq(prompt: string) {
       "Authorization": `Bearer ${process.env.GROQ_API_KEY}`
     },
     body: JSON.stringify({
-      model: "llama3-8b-8192",
+      model: "llama-3.1-8b-instant",
       messages: [
         {
           role: "system",
@@ -22,7 +22,8 @@ async function optimizeWithGroq(prompt: string) {
           content: prompt
         }
       ],
-      temperature: 0.7
+      temperature: 0.7,
+      max_tokens: 300
     })
   });
 
@@ -75,7 +76,8 @@ export default async function handler(req: any, res: any) {
           inputs: finalPrompt,
           parameters: {
             num_inference_steps: 20,
-            guidance_scale: 5.0
+            guidance_scale: 5.0,
+            negative_prompt: "blurry, low quality, extra objects, distorted, bad anatomy, cropped"
           }
         }),
       }
