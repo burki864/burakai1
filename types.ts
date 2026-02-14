@@ -34,7 +34,7 @@ export enum Language {
 }
 
 export interface Attachment {
-  type: 'image' | 'file';
+  type: 'image' | 'video' | 'file';
   data: string;
   mimeType: string;
   name?: string;

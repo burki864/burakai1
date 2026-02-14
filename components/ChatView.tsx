@@ -5,12 +5,10 @@ import {
   Send, User as UserIcon, Plus, Loader2, AlertCircle, 
   Search, Globe, Camera, Image as ImageIcon, Paperclip, 
   X, ExternalLink, Zap, Video, FileText, MessageSquare,
-  File as FileIcon, FileImage
+  File as FileIcon, FileImage, Mic, MicOff, Play
 } from 'lucide-react';
 import { ChatSession, Message, SettingsState, Attachment, User } from '../types';
 import { geminiService } from '../services/geminiService';
-import { storageService } from '../services/storageService';
-import { sendMessage as persistMessage } from '../services/supabase';
 import { TRANSLATIONS, INTENT_KEYWORDS } from '../constants';
 import Logo from './Logo';
 import GenerationAnimation from './GenerationAnimation';
@@ -36,6 +34,7 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isFeedbackOpen, setIsFeedbackOpen] = useState(false);
+  const [isListening, setIsListening] = useState(false);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -53,6 +52,32 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
     return 'text';
   };
 
+  const startSpeechRecognition = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setError("Speech recognition is not supported in this browser.");
+      return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = settings.language === 'tr' ? 'tr-TR' : 'en-US';
+    recognition.interimResults = false;
+
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognition.onerror = (event: any) => {
+      setError("Speech error: " + event.error);
+      setIsListening(false);
+    };
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript;
+      setInput(prev => (prev ? prev + ' ' : '') + transcript);
+    };
+
+    recognition.start();
+  };
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
@@ -65,8 +90,12 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
       const attachmentPromise = new Promise<Attachment>((resolve) => {
         reader.onload = (event) => {
           const base64Data = (event.target?.result as string).split(',')[1];
+          let type: 'image' | 'video' | 'file' = 'file';
+          if (file.type.startsWith('image/')) type = 'image';
+          else if (file.type.startsWith('video/')) type = 'video';
+
           resolve({
-            type: file.type.startsWith('image/') ? 'image' : 'file',
+            type,
             data: base64Data,
             mimeType: file.type || 'application/octet-stream',
             name: file.name
@@ -96,12 +125,6 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
     }
 
     const intent = detectIntent(cleanInput);
-    if (intent === 'video') {
-      const aistudio = (window as any).aistudio;
-      if (aistudio && !(await aistudio.hasSelectedApiKey())) {
-        try { await aistudio.openSelectKey(); } catch (e) { setError("API Key required for Video."); return; }
-      }
-    }
 
     const userMsg: Message = { id: Date.now().toString(), role: 'user', content: cleanInput, timestamp: Date.now(), attachments: [...attachments] };
     const currentMessages = chat.messages || [];
@@ -147,12 +170,10 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
       onDragLeave={() => setIsDraggingFile(false)}
       onDrop={(e) => { e.preventDefault(); setIsDraggingFile(false); }}
     >
-      {/* LOCAL THEME OVERLAY */}
       <div className="absolute inset-0 pointer-events-none z-[1] overflow-hidden">
         <BackgroundTheme theme={settings.activeTheme} />
       </div>
       
-      {/* UI CONTENT */}
       <header className="relative z-10 px-4 py-3 md:px-8 lg:px-10 md:py-6 flex items-center justify-between glass-panel border-b border-white/10">
         <div className="flex items-center gap-3 md:gap-4 overflow-hidden">
           <Logo size={32} className="md:w-10 lg:w-12 shrink-0" />
@@ -187,13 +208,17 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
             <div className={`flex flex-col space-y-2 sm:space-y-3 md:space-y-5 w-full ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
               {msg.isGenerating && <GenerationAnimation type={msg.generationType || 'image'} />}
               
-              {/* User Attachments in History */}
               {msg.attachments && msg.attachments.length > 0 && (
                 <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {msg.attachments.map((att, i) => (
                     <div key={i} className="max-w-[200px] rounded-xl overflow-hidden glass-panel border border-white/10 shadow-lg">
                       {att.type === 'image' ? (
                         <img src={`data:${att.mimeType};base64,${att.data}`} className="w-full h-auto object-cover max-h-40" alt="Attachment" />
+                      ) : att.type === 'video' ? (
+                        <div className="p-3 flex items-center gap-2 text-xs font-bold text-slate-300">
+                          <Video size={16} className="text-cyan-400" />
+                          <span className="truncate">{att.name || 'Video'}</span>
+                        </div>
                       ) : (
                         <div className="p-3 flex items-center gap-2 text-xs font-bold text-slate-300">
                           <FileIcon size={16} className="text-blue-400" />
@@ -230,7 +255,6 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
         <div className="max-w-4xl mx-auto space-y-2 md:space-y-4">
             {error && <div className="p-2 sm:p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-black flex items-center gap-2"><AlertCircle size={14}/><span>{error}</span></div>}
             
-            {/* Pending Attachments UI */}
             <AnimatePresence>
               {attachments.length > 0 && (
                 <motion.div 
@@ -241,7 +265,7 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
                 >
                   {attachments.map((att, i) => (
                     <div key={i} className="relative group p-2 glass-panel border border-blue-500/30 rounded-xl flex items-center gap-2 pr-8 animate-in fade-in slide-in-from-bottom-2">
-                      {att.type === 'image' ? <FileImage size={14} className="text-blue-400" /> : <FileIcon size={14} className="text-blue-400" />}
+                      {att.type === 'image' ? <FileImage size={14} className="text-blue-400" /> : att.type === 'video' ? <Video size={14} className="text-cyan-400" /> : <FileIcon size={14} className="text-blue-400" />}
                       <span className="text-[10px] font-bold text-slate-300 truncate max-w-[120px]">{att.name}</span>
                       <button 
                         onClick={() => removeAttachment(i)}
@@ -269,12 +293,19 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
                           onChange={handleFileChange} 
                           className="hidden" 
                           multiple 
+                          accept="image/*,video/*,application/pdf,text/plain"
                         />
                         <button 
                           onClick={() => fileInputRef.current?.click()}
                           className="p-2 text-slate-500 hover:text-blue-400 transition-all hover:scale-110"
                         >
                           <Paperclip size={18}/>
+                        </button>
+                        <button 
+                          onClick={startSpeechRecognition}
+                          className={`p-2 transition-all hover:scale-110 ${isListening ? 'text-red-500 animate-pulse' : 'text-slate-500 hover:text-blue-400'}`}
+                        >
+                          {isListening ? <Mic size={18} /> : <MicOff size={18} />}
                         </button>
                         <button 
                           onClick={() => setIsFeedbackOpen(true)}
