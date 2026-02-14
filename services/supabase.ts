@@ -49,8 +49,6 @@ export async function createProfile(user: User) {
       ], { onConflict: 'id' });
 
     if (error) {
-      // 23503 is the PostgreSQL code for foreign key violation
-      // This happens when user.id doesn't exist in auth.users
       if (error.code === '23503') {
         console.warn("Supabase Foreign Key Constraint: Profile not persisted, continuing in local mode.");
         return null;
@@ -60,7 +58,6 @@ export async function createProfile(user: User) {
     return data;
   } catch (error) {
     console.error('Database Sync Bypassed:', error);
-    // Return null instead of throwing to allow local-first sessions to proceed
     return null;
   }
 }
@@ -81,7 +78,11 @@ export async function updateProfile(userId: string, updates: { username?: string
   }
 }
 
-export async function sendMessage(userId: string, text: string) {
+/**
+ * Sends and persists a message to the Supabase messages table.
+ * Adheres to the requested schema: { user_id, content, role, created_at }
+ */
+export async function sendMessage(userId: string, text: string, role: 'user' | 'assistant' = 'user') {
   if (!isSupabaseConfigured) return null;
   try {
     const { data, error } = await supabase
@@ -90,12 +91,14 @@ export async function sendMessage(userId: string, text: string) {
         {
           user_id: userId,
           content: text,
+          role: role,
           created_at: new Date().toISOString()
         }
       ]);
+    if (error) throw error;
     return data;
   } catch (error) {
-    console.warn('Persistence error (expected for guest sessions):', error);
+    console.warn('Persistence error (guest sessions likely):', error);
     return null;
   }
 }
@@ -114,9 +117,30 @@ export const dbService = {
             created_at: new Date().toISOString()
           }
         ]);
+      if (error) throw error;
       return data;
     } catch (error) {
       console.warn('Image persistence error:', error);
+      return null;
+    }
+  },
+  saveVideo: async (userId: string, prompt: string, videoUrl: string) => {
+    if (!isSupabaseConfigured) return null;
+    try {
+      const { data, error } = await supabase
+        .from('videos')
+        .insert([
+          {
+            user_id: userId,
+            prompt: prompt,
+            url: videoUrl,
+            created_at: new Date().toISOString()
+          }
+        ]);
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.warn('Video persistence error:', error);
       return null;
     }
   }

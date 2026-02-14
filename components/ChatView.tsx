@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { ChatSession, Message, SettingsState, Attachment, User } from '../types';
 import { geminiService } from '../services/geminiService';
+import { sendMessage as saveToSupabase, dbService } from '../services/supabase';
 import { TRANSLATIONS, INTENT_KEYWORDS } from '../constants';
 import Logo from './Logo';
 import GenerationAnimation from './GenerationAnimation';
@@ -130,6 +131,10 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
     const currentMessages = chat.messages || [];
     const newMessages = [...currentMessages, userMsg];
     onUpdateMessages(newMessages);
+    
+    // PERSIST USER MESSAGE TO SUPABASE
+    saveToSupabase(user.id, cleanInput, 'user').catch(err => console.debug("Supabase sync issue:", err));
+
     setInput('');
     setAttachments([]);
     setIsTyping(true);
@@ -141,6 +146,8 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
       try {
         const url = await geminiService.generateImage(cleanInput);
         onUpdateMessages([...newMessages, { ...genMsg, isGenerating: false, imageUrl: url }]);
+        // PERSIST GENERATED IMAGE TO SUPABASE
+        dbService.saveImage(user.id, cleanInput, url).catch(err => console.debug("Supabase media sync issue:", err));
       } catch (e: any) { setError(e.message); onUpdateMessages(newMessages); }
       setIsTyping(false);
     } else if (intent === 'video') {
@@ -149,12 +156,16 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
       try {
         const url = await geminiService.generateVideo(cleanInput, user.id, '16:9');
         onUpdateMessages([...newMessages, { ...genMsg, isGenerating: false, videoUrl: url }]);
+        // PERSIST GENERATED VIDEO TO SUPABASE
+        dbService.saveVideo(user.id, cleanInput, url).catch(err => console.debug("Supabase media sync issue:", err));
       } catch (e: any) { setError(e.message); onUpdateMessages(newMessages); }
       setIsTyping(false);
     } else {
       try {
         const fullResponse = await geminiService.generateTextStream(cleanInput, newMessages, settings, userMsg.attachments || [], (chunk) => setStreamingMessage(prev => prev + chunk));
         onUpdateMessages([...newMessages, { id: Date.now().toString(), role: 'assistant', content: fullResponse, timestamp: Date.now() }]);
+        // PERSIST ASSISTANT RESPONSE TO SUPABASE
+        saveToSupabase(user.id, fullResponse, 'assistant').catch(err => console.debug("Supabase sync issue:", err));
       } catch (err: any) { setError(err.message); } finally { setIsTyping(false); setStreamingMessage(''); }
     }
   };

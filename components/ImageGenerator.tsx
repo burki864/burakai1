@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Trash2, Wand2, Loader2, Sparkles, Image as ImageIcon } from 'lucide-react';
-import { ImageGeneration, SettingsState } from '../types';
+import { ImageGeneration, SettingsState, User } from '../types';
 import { geminiService } from '../services/geminiService';
 import { dbService } from '../services/supabase';
 import { TRANSLATIONS } from '../constants';
@@ -13,10 +13,11 @@ interface ImageGeneratorProps {
   onSaveImage: (img: ImageGeneration) => void;
   onDeleteImage: (id: string) => void;
   settings: SettingsState;
+  user: User;
 }
 
 const ImageGenerator: React.FC<ImageGeneratorProps> = ({
-  images, onSaveImage, onDeleteImage, settings
+  images, onSaveImage, onDeleteImage, settings, user
 }) => {
   const [prompt, setPrompt] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -32,7 +33,10 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
     try {
       const imageUrl = await geminiService.generateImage(prompt);
       const newImg: ImageGeneration = { id: Date.now().toString(), prompt: prompt.trim(), url: imageUrl, timestamp: Date.now() };
-      dbService.saveImage('current-user', prompt, imageUrl).catch(() => {});
+      
+      // PERSIST TO SUPABASE WITH ACTUAL USER ID
+      dbService.saveImage(user.id, prompt.trim(), imageUrl).catch(err => console.debug("Supabase media sync issue:", err));
+      
       onSaveImage(newImg);
       setPrompt('');
     } catch (err: any) { setError(err.message || 'Failed to generate image.'); }
@@ -45,7 +49,6 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* LOCAL THEME OVERLAY */}
       <div className="absolute inset-0 pointer-events-none z-[1] overflow-hidden">
         <AnimatePresence>
           {isHovered && (
@@ -87,6 +90,7 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
               {isGenerating ? t.generating : t.generate}
             </button>
           </div>
+          {error && <p className="text-red-400 text-xs font-bold mt-4 animate-pulse">{error}</p>}
         </div>
       </header>
 
