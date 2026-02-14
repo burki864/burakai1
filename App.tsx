@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, ChatSession, SettingsState, ImageGeneration, ThemeType, AppView } from './types';
 import { storageService } from './services/storageService';
+import { dbService } from './services/supabase'; // dbService'i içe aktar
 import Auth from './components/Auth';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
@@ -25,12 +25,35 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<SettingsState>(storageService.getSettings());
   const [view, setView] = useState<AppView>('chat');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  
+  // Ban durumu için yeni state'ler
+  const [banStatus, setBanStatus] = useState<{ isBanned: boolean; expiresAt?: number }>({
+    isBanned: false,
+    expiresAt: undefined
+  });
+  const [isSecurityLoading, setIsSecurityLoading] = useState(true);
 
   useEffect(() => storageService.setUser(user), [user]);
   useEffect(() => storageService.saveChats(chats), [chats]);
   useEffect(() => storageService.saveImages(images), [images]);
   useEffect(() => storageService.saveSettings(settings), [settings]);
 
+  // CANLI BAN KONTROLÜ
+  useEffect(() => {
+    const verifyAccess = async () => {
+      if (user?.id) {
+        setIsSecurityLoading(true);
+        const status = await dbService.checkBanStatus(user.id);
+        setBanStatus(status);
+        setIsSecurityLoading(false);
+      } else {
+        setIsSecurityLoading(false);
+      }
+    };
+    verifyAccess();
+  }, [user?.id]);
+
+  // Tema Renk Ayarları
   useEffect(() => {
     const themeColors: Record<ThemeType, { primary: string; secondary: string; glow: string }> = {
       default: { primary: '#3b82f6', secondary: '#a855f7', glow: 'rgba(59, 130, 246, 0.5)' },
@@ -57,6 +80,7 @@ const App: React.FC = () => {
     setActiveChatId(null); 
     setView('chat'); 
     setShowIntro(false); 
+    setBanStatus({ isBanned: false, expiresAt: undefined });
     storageService.setUser(null);
   };
 
@@ -68,11 +92,16 @@ const App: React.FC = () => {
     setIsSidebarOpen(false);
   };
 
-  const banExpiresAt = user?.profile?.ban_until ? new Date(user.profile.ban_until).getTime() : undefined;
-  const isBanned = user?.profile?.banned || (banExpiresAt !== undefined && banExpiresAt > Date.now());
-  
-  if (isBanned) return <BannedScreen lang={settings.language} expiresAt={banExpiresAt} />;
+  // Güvenlik katmanı: Banlıysa her şeyi durdur ve ekranı göster
+  if (banStatus.isBanned) {
+    return <BannedScreen lang={settings.language} expiresAt={banStatus.expiresAt} />;
+  }
+
+  // Kullanıcı yoksa Login ekranı
   if (!user) return <Auth onLogin={handleLogin} />;
+
+  // Güvenlik kontrolü yapılırken kısa bir yükleme ekranı (opsiyonel)
+  if (isSecurityLoading) return <div className="h-screen w-full bg-slate-950 flex items-center justify-center font-mono text-blue-500 animate-pulse">Neural Link Verifying...</div>;
 
   const activeChat = chats.find(c => c.id === activeChatId);
 
