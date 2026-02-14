@@ -1,4 +1,3 @@
-
 import { createClient } from '@supabase/supabase-js';
 import { User } from '../types';
 
@@ -28,8 +27,7 @@ export const supabase = createClient(
 );
 
 /**
- * Inserts a new user profile into the profiles table.
- * Gracefully handles foreign key violations for mock/neural users.
+ * Inserts or updates a user profile.
  */
 export async function createProfile(user: User) {
   if (!isSupabaseConfigured) return null;
@@ -50,14 +48,14 @@ export async function createProfile(user: User) {
 
     if (error) {
       if (error.code === '23503') {
-        console.warn("Supabase Foreign Key Constraint: Profile not persisted, continuing in local mode.");
+        console.warn("Supabase Foreign Key Constraint: Profile not persisted.");
         return null;
       }
       throw error;
     }
     return data;
   } catch (error) {
-    console.error('Database Sync Bypassed:', error);
+    console.error('Database Sync Error:', error);
     return null;
   }
 }
@@ -79,8 +77,7 @@ export async function updateProfile(userId: string, updates: { username?: string
 }
 
 /**
- * Sends and persists a message to the Supabase messages table.
- * Adheres to the requested schema: { user_id, content, role, created_at }
+ * Sends and persists a message.
  */
 export async function sendMessage(userId: string, text: string, role: 'user' | 'assistant' = 'user') {
   if (!isSupabaseConfigured) return null;
@@ -98,12 +95,45 @@ export async function sendMessage(userId: string, text: string, role: 'user' | '
     if (error) throw error;
     return data;
   } catch (error) {
-    console.warn('Persistence error (guest sessions likely):', error);
+    console.warn('Persistence error:', error);
     return null;
   }
 }
 
+/**
+ * CORE DATABASE SERVICES
+ * Includes Image, Video, and Ban Management
+ */
 export const dbService = {
+  // --- BAN DURUMU KONTROLÜ ---
+  checkBanStatus: async (userId: string): Promise<{ isBanned: boolean; expiresAt?: number }> => {
+    if (!isSupabaseConfigured) return { isBanned: false };
+
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('banned, banned_until')
+        .eq('id', userId)
+        .single();
+
+      if (error || !data) return { isBanned: false };
+
+      const now = new Date();
+      const bannedUntil = data.banned_until ? new Date(data.banned_until) : null;
+
+      // Mantık: 'banned' true ise VE (süresizse veya süresi henüz dolmadıysa)
+      const isCurrentlyBanned = data.banned && (!bannedUntil || bannedUntil > now);
+
+      return {
+        isBanned: isCurrentlyBanned,
+        expiresAt: bannedUntil ? bannedUntil.getTime() : undefined
+      };
+    } catch (error) {
+      console.error('Ban status check failed:', error);
+      return { isBanned: false };
+    }
+  },
+
   saveImage: async (userId: string, prompt: string, imageUrl: string) => {
     if (!isSupabaseConfigured) return null;
     try {
@@ -124,6 +154,7 @@ export const dbService = {
       return null;
     }
   },
+
   saveVideo: async (userId: string, prompt: string, videoUrl: string) => {
     if (!isSupabaseConfigured) return null;
     try {
@@ -149,18 +180,13 @@ export const dbService = {
 export const feedbackService = {
   send: async (userName: string, message: string) => {
     if (!isSupabaseConfigured) {
-      console.warn("Supabase not configured. Simulating feedback success.");
+      console.warn("Supabase not configured. Simulating success.");
       return { success: true };
     }
     try {
       const { data, error } = await supabase
         .from('feedbacks')
-        .insert([
-          { 
-            user_name: userName, 
-            message: message 
-          }
-        ]);
+        .insert([{ user_name: userName, message: message }]);
       if (error) throw error;
       return { success: true };
     } catch (error) {
