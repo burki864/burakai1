@@ -46,8 +46,8 @@ export default async function handler(req: any, res: any) {
         body: JSON.stringify({
           inputs: finalPrompt,
           parameters: {
-            num_inference_steps: 6,
-            guidance_scale: 2.5
+            num_inference_steps: 20,
+            guidance_scale: 4.0
           }
         }),
       }
