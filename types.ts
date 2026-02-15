@@ -20,7 +20,7 @@ export interface User {
 }
 
 export type ThemeType = 'default' | 'rain' | 'desert' | 'nebula' | 'cyberpunk' | 'snow';
-export type AppView = 'chat' | 'images' | 'video-studio' | 'settings';
+export type AppView = 'chat' | 'images' | 'video-studio' | 'settings' | 'downloads';
 
 export enum Personality {
   Normal = 'normal',

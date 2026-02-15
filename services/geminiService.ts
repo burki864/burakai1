@@ -10,13 +10,14 @@ export class GeminiService {
     history: Message[],
     settings: SettingsState,
     attachments: Attachment[],
-    onChunk: (text: string) => void
+    onChunk: (text: string) => void,
+    researchEnabled: boolean = false
   ): Promise<string> {
     try {
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, history, settings, attachments })
+        body: JSON.stringify({ prompt, history, settings, attachments, researchEnabled })
       });
 
       if (!response.ok) {

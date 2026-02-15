@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, ChatSession, SettingsState, ImageGeneration, ThemeType, AppView } from './types';
@@ -9,6 +10,7 @@ import ChatView from './components/ChatView';
 import ImageGenerator from './components/ImageGenerator';
 import VideoStudio from './components/VideoStudio';
 import Settings from './components/Settings';
+import Downloads from './components/Downloads';
 import BannedScreen from './components/BannedScreen';
 import MouseGlow from './components/MouseGlow';
 import IntroAnimation from './components/IntroAnimation';
@@ -150,6 +152,7 @@ const App: React.FC = () => {
               {view === 'images' && <ImageGenerator images={images} onSaveImage={(img) => setImages(p => [img, ...p])} onDeleteImage={(id) => setImages(p => p.filter(i => i.id !== id))} settings={settings} user={user} />}
               {view === 'video-studio' && <VideoStudio settings={settings} user={user} />}
               {view === 'settings' && <Settings settings={settings} onUpdateSettings={setSettings} user={user} onLogout={handleLogout} onUpdateUser={setUser} />}
+              {view === 'downloads' && <Downloads settings={settings} />}
             </MotionDiv>
           )}
         </AnimatePresence>

@@ -5,7 +5,8 @@ import {
   Send, User as UserIcon, Plus, Loader2, AlertCircle, 
   Search, Globe, Camera, Image as ImageIcon, Paperclip, 
   X, ExternalLink, Zap, Video, FileText, MessageSquare,
-  File as FileIcon, FileImage, Mic, MicOff, Play
+  File as FileIcon, FileImage, Mic, MicOff, Play,
+  Telescope, Beaker
 } from 'lucide-react';
 import { ChatSession, Message, SettingsState, Attachment, User } from '../types';
 import { geminiService } from '../services/geminiService';
@@ -31,6 +32,7 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState(false);
+  const [isResearchMode, setIsResearchMode] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -136,6 +138,7 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
     saveToSupabase(user.id, cleanInput, 'user').catch(err => console.debug("Supabase sync issue:", err));
 
     setInput('');
+    const currentAttachments = [...attachments];
     setAttachments([]);
     setIsTyping(true);
     setError(null);
@@ -146,7 +149,6 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
       try {
         const url = await geminiService.generateImage(cleanInput);
         onUpdateMessages([...newMessages, { ...genMsg, isGenerating: false, imageUrl: url }]);
-        // PERSIST GENERATED IMAGE TO SUPABASE
         dbService.saveImage(user.id, cleanInput, url).catch(err => console.debug("Supabase media sync issue:", err));
       } catch (e: any) { setError(e.message); onUpdateMessages(newMessages); }
       setIsTyping(false);
@@ -156,17 +158,48 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
       try {
         const url = await geminiService.generateVideo(cleanInput, user.id, '16:9');
         onUpdateMessages([...newMessages, { ...genMsg, isGenerating: false, videoUrl: url }]);
-        // PERSIST GENERATED VIDEO TO SUPABASE
         dbService.saveVideo(user.id, cleanInput, url).catch(err => console.debug("Supabase media sync issue:", err));
       } catch (e: any) { setError(e.message); onUpdateMessages(newMessages); }
       setIsTyping(false);
     } else {
       try {
-        const fullResponse = await geminiService.generateTextStream(cleanInput, newMessages, settings, userMsg.attachments || [], (chunk) => setStreamingMessage(prev => prev + chunk));
-        onUpdateMessages([...newMessages, { id: Date.now().toString(), role: 'assistant', content: fullResponse, timestamp: Date.now() }]);
-        // PERSIST ASSISTANT RESPONSE TO SUPABASE
-        saveToSupabase(user.id, fullResponse, 'assistant').catch(err => console.debug("Supabase sync issue:", err));
-      } catch (err: any) { setError(err.message); } finally { setIsTyping(false); setStreamingMessage(''); }
+        // Pass Research Mode and Attachments (Images) for Multi-Modal analysis
+        const fullResponse = await fetch('/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ 
+            prompt: cleanInput, 
+            history: newMessages.slice(-10), 
+            settings, 
+            attachments: currentAttachments,
+            researchEnabled: isResearchMode
+          })
+        });
+
+        if (!fullResponse.ok) throw new Error("Synthesis failed");
+
+        const reader = fullResponse.body?.getReader();
+        const decoder = new TextDecoder();
+        let accumulatedText = "";
+
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value);
+            accumulatedText += chunk;
+            setStreamingMessage(accumulatedText);
+          }
+        }
+
+        onUpdateMessages([...newMessages, { id: Date.now().toString(), role: 'assistant', content: accumulatedText, timestamp: Date.now() }]);
+        saveToSupabase(user.id, accumulatedText, 'assistant').catch(err => console.debug("Supabase sync issue:", err));
+      } catch (err: any) { 
+        setError(err.message); 
+      } finally { 
+        setIsTyping(false); 
+        setStreamingMessage(''); 
+      }
     }
   };
 
@@ -195,6 +228,14 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
             </div>
           </div>
         </div>
+        
+        {/* Active Research Indicator */}
+        {isResearchMode && (
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 animate-pulse">
+            <Globe size={12} className="text-blue-400" />
+            <span className="text-[10px] font-black uppercase tracking-widest text-blue-400">Researching</span>
+          </div>
+        )}
       </header>
 
       <div ref={scrollRef} className="relative z-10 flex-1 overflow-y-auto px-4 sm:px-6 md:px-10 py-6 md:py-12 lg:py-16 space-y-6 md:space-y-10 custom-scrollbar">
@@ -222,18 +263,13 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
               {msg.attachments && msg.attachments.length > 0 && (
                 <div className={`flex flex-wrap gap-2 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   {msg.attachments.map((att, i) => (
-                    <div key={i} className="max-w-[200px] rounded-xl overflow-hidden glass-panel border border-white/10 shadow-lg">
+                    <div key={i} className="max-w-[300px] rounded-2xl overflow-hidden glass-panel border border-white/10 shadow-2xl transition-transform hover:scale-105">
                       {att.type === 'image' ? (
-                        <img src={`data:${att.mimeType};base64,${att.data}`} className="w-full h-auto object-cover max-h-40" alt="Attachment" />
-                      ) : att.type === 'video' ? (
-                        <div className="p-3 flex items-center gap-2 text-xs font-bold text-slate-300">
-                          <Video size={16} className="text-cyan-400" />
-                          <span className="truncate">{att.name || 'Video'}</span>
-                        </div>
+                        <img src={`data:${att.mimeType};base64,${att.data}`} className="w-full h-auto object-cover max-h-60" alt="Attachment" />
                       ) : (
-                        <div className="p-3 flex items-center gap-2 text-xs font-bold text-slate-300">
-                          <FileIcon size={16} className="text-blue-400" />
-                          <span className="truncate">{att.name || 'File'}</span>
+                        <div className="p-4 flex items-center gap-3 text-sm font-bold text-slate-300">
+                          {att.type === 'video' ? <Video size={20} className="text-cyan-400" /> : <FileIcon size={20} className="text-blue-400" />}
+                          <span className="truncate">{att.name || 'Data Block'}</span>
                         </div>
                       )}
                     </div>
@@ -312,6 +348,16 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
                         >
                           <Paperclip size={18}/>
                         </button>
+                        
+                        {/* Research Mode Toggle */}
+                        <button 
+                          onClick={() => setIsResearchMode(!isResearchMode)}
+                          className={`p-2 transition-all hover:scale-110 flex items-center gap-1.5 px-3 rounded-full border ${isResearchMode ? 'bg-blue-600/20 border-blue-500/40 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.3)]' : 'text-slate-500 hover:text-blue-400 border-transparent'}`}
+                        >
+                          <Telescope size={18} className={isResearchMode ? 'animate-pulse' : ''} />
+                          <span className="text-[10px] font-black uppercase tracking-widest hidden sm:inline">Research</span>
+                        </button>
+
                         <button 
                           onClick={startSpeechRecognition}
                           className={`p-2 transition-all hover:scale-110 ${isListening ? 'text-red-500 animate-pulse' : 'text-slate-500 hover:text-blue-400'}`}

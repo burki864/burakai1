@@ -1,13 +1,10 @@
-import { GoogleGenAI } from "@google/genai";
+// Not: Pika için resmi bir SDK yoksa 'axios' veya 'fetch' kullanman en güvenlisidir.
+import axios from 'axios';
 
 export const config = {
   runtime: 'nodejs',
 };
 
-/**
- * Handles video generation using the Veo 3.1 Fast model.
- * Polls for operation completion to return the final MP4 download link.
- */
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
@@ -20,50 +17,68 @@ export default async function handler(req: any, res: any) {
       return res.status(400).json({ error: 'Prompt is required for video synthesis.' });
     }
 
-    // Initialize the Google GenAI SDK
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    
-    // Initiate video generation operation
-    let operation = await ai.models.generateVideos({
-      model: 'veo-3.1-fast-generate-preview',
-      prompt: prompt,
-      config: {
-        numberOfVideos: 1,
-        resolution: '720p',
-        aspectRatio: aspectRatio as any
+    const PIKA_API_KEY = process.env.PIKA_API_KEY;
+
+    // 1. ADIM: Video Üretimini Başlat (Generate)
+    const generateResponse = await axios.post(
+      'https://api.pika.art/v1/generate',
+      {
+        promptText: prompt,
+        options: {
+          aspectRatio: aspectRatio === '16:9' ? 1 : (aspectRatio === '9:16' ? 2 : 0), // Pika oranları sayısal alabilir
+          frameRate: 24
+        }
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${PIKA_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
       }
-    });
+    );
 
-    // Poll for operation completion. 
-    // Note: Video generation can take time; we poll within the handler's execution window.
+    const jobId = generateResponse.data.jobId;
+
+    // 2. ADIM: Polling (Video hazır olana kadar bekle)
     const startTime = Date.now();
-    const pollTimeout = 50000; // 50 seconds limit for serverless environment
+    const pollTimeout = 50000; // 50 saniye (Vercel/Serverless sınırı)
+    let videoUrl = null;
 
-    while (!operation.done && (Date.now() - startTime < pollTimeout)) {
+    while (Date.now() - startTime < pollTimeout) {
+      const statusResponse = await axios.get(
+        `https://api.pika.art/v1/jobs/${jobId}`,
+        {
+          headers: { 'Authorization': `Bearer ${PIKA_API_KEY}` }
+        }
+      );
+
+      const job = statusResponse.data;
+
+      if (job.status === 'completed') {
+        videoUrl = job.videoUrl;
+        break;
+      } else if (job.status === 'failed') {
+        throw new Error('Pika synthesis failed: Job marked as failed.');
+      }
+
+      // 5 saniye bekle ve tekrar dene
       await new Promise(resolve => setTimeout(resolve, 5000));
-      operation = await ai.operations.getVideosOperation({ operation });
     }
 
-    // If still in progress after timeout, return the operation name for potential client-side polling
-    if (!operation.done) {
+    // 3. ADIM: Yanıt Döndür
+    if (!videoUrl) {
       return res.status(202).json({ 
-        message: 'Synthesis in progress. High-quality neural rendering takes time.',
-        operationId: (operation as any).name 
+        message: 'Synthesis in progress on Pika servers.',
+        jobId: jobId 
       });
     }
-
-    const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
-    if (!downloadLink) {
-        throw new Error('Video generation failed: Synthesis result unavailable.');
-    }
-
-    // Secure the download link with the API key as per Veo requirements
-    const videoUrl = `${downloadLink}&key=${process.env.API_KEY}`;
 
     return res.status(200).json({ videoUrl });
 
   } catch (error: any) {
-    console.error('[GENERATE-VIDEO ERROR]', error);
-    return res.status(500).json({ error: error.message || 'An internal error occurred during synthesis.' });
+    console.error('[PIKA-GENERATE ERROR]', error.response?.data || error.message);
+    return res.status(500).json({ 
+      error: error.response?.data?.message || 'An internal error occurred during Pika synthesis.' 
+    });
   }
 }

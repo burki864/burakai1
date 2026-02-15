@@ -11,7 +11,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Film,
-  Zap
+  Zap,
+  Download
 } from 'lucide-react';
 import { ChatSession, User, SettingsState } from '../types';
 import { TRANSLATIONS } from '../constants';
@@ -59,6 +60,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           { id: 'images', label: t.images, icon: <ImageIcon size={18} />, color: 'text-purple-400' },
           { id: 'video-studio', label: t.videoStudio, icon: <Film size={18} />, color: 'text-cyan-400' },
           { id: 'settings', label: t.settings, icon: <SettingsIcon size={18} />, color: 'text-slate-400' },
+          { id: 'downloads', label: t.downloads, icon: <Download size={18} />, color: 'text-emerald-400' },
         ].map((item) => (
           <button key={item.id} onClick={() => onViewChange(item.id)}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all group ${currentView === item.id ? 'bg-white/10 ring-1 ring-white/10' : 'hover:bg-white/5'}`}>

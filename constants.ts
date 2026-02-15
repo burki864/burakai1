@@ -30,6 +30,7 @@ export const TRANSLATIONS: Record<Language, any> = {
       images: 'Image Studio',
       videoStudio: 'Video Studio',
       settings: 'Parameters',
+      downloads: 'Download App',
       history: 'History',
       newChat: 'New Link',
       proCore: 'Pro Core'
@@ -64,7 +65,18 @@ export const TRANSLATIONS: Record<Language, any> = {
     images: { title: 'Neural Synthesis', subtitle: 'Artificially Imagined Reality', placeholder: 'Describe vision...', generate: 'Generate', generating: 'Synthesizing...', empty: 'No Art Found', emptySub: 'Initiate synthesis' },
     auth: { login: 'Access Core', signup: 'Register Core', uplink: 'Secure Uplink', email: 'Identifier', password: 'Key', initiate: 'Initiate', secure: 'Secure', multiNode: 'Multi-Node', missing: 'No id?', join: 'Join', found: 'Id found?', access: 'Access' },
     banned: { title: 'PURGED', desc: 'Access restricted', device: 'Blocked', expires: 'Ends in: ', permanent: 'Permanent' },
-    settings: { profile: 'Identity', profileSub: 'Neural footprint', theme: 'Environment', themeSub: 'Atmosphere', aiEngine: 'Engine', aiEngineSub: 'Model parameters', signOut: 'Sever Link', version: 'BurakAI v3.5.0-ultra' }
+    settings: { profile: 'Identity', profileSub: 'Neural footprint', theme: 'Environment', themeSub: 'Atmosphere', aiEngine: 'Engine', aiEngineSub: 'Model parameters', signOut: 'Sever Link', version: 'BurakAI v3.5.0-ultra' },
+    downloads: {
+      title: 'Get the App',
+      subtitle: 'Multi-Node Synchronization',
+      android: 'Android (APK)',
+      windows: 'Windows (EXE)',
+      apple: 'Apple (PWA)',
+      pwaDesc: 'Open BurakAI in Safari and use "Add to Home Screen" to install.',
+      apkDesc: 'Download the APK file for Android devices.',
+      exeDesc: 'Desktop experience for Windows power users.',
+      downloadNow: 'Download Now'
+    }
   },
   [Language.TR]: {
     nav: {
@@ -72,6 +84,7 @@ export const TRANSLATIONS: Record<Language, any> = {
       images: 'Resim Stüdyosu',
       videoStudio: 'Video Stüdyosu',
       settings: 'Ayarlar',
+      downloads: 'Uygulamayı İndir',
       history: 'Geçmiş',
       newChat: 'Yeni Bağlantı',
       proCore: 'Pro Çekirdek'
@@ -101,6 +114,17 @@ export const TRANSLATIONS: Record<Language, any> = {
     images: { title: 'Nöral Sentez', subtitle: 'Yapay Hayal Gücü', placeholder: 'Vizyonunuz...', generate: 'Oluştur', generating: 'Sentezleniyor...', empty: 'Sanat Yok', emptySub: 'Sentezi başlat' },
     auth: { login: 'Giriş', signup: 'Kayıt', uplink: 'Güvenli Bağlantı', email: 'E-posta', password: 'Şifre', initiate: 'Başlat', secure: 'Güvenli', multiNode: 'Çoklu Düğüm', missing: 'Hesap yok mu?', join: 'Kayıt ol', found: 'Hesap var mı?', access: 'Giriş yap' },
     banned: { title: 'ENGELLEDİNİZ', desc: 'Erişim kısıtlandı', device: 'Cihaz Engellendi', expires: 'Bitiş: ', permanent: 'Kalıcı' },
-    settings: { profile: 'Kimlik', theme: 'Çevresel Geçersiz Kılma', aiEngine: 'Bilişsel Motor', signOut: 'Bağlantıyı Kes', version: 'BurakAI v3.5.0-ultra' }
+    settings: { profile: 'Kimlik', theme: 'Çevresel Geçersiz Kılma', aiEngine: 'Bilişsel Motor', signOut: 'Bağlantıyı Kes', version: 'BurakAI v3.5.0-ultra' },
+    downloads: {
+      title: 'Uygulamayı Al',
+      subtitle: 'Çoklu Düğüm Senkronizasyonu',
+      android: 'Android (APK)',
+      windows: 'Windows (EXE)',
+      apple: 'Apple (PWA)',
+      pwaDesc: 'Safari\'de BurakAI\'yi açın ve yüklemek için "Ana Ekrana Ekle"yi kullanın.',
+      apkDesc: 'Android cihazlar için APK dosyasını indirin.',
+      exeDesc: 'Windows güç kullanıcıları için masaüstü deneyimi.',
+      downloadNow: 'Şimdi İndir'
+    }
   }
 };

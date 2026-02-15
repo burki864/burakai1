@@ -74,7 +74,6 @@ const Settings: React.FC<SettingsProps> = ({
     }
   };
 
-  // Fixed: Use React.ReactElement instead of React.ReactNode to allow for safe prop injection with React.cloneElement
   const themes: { id: ThemeType; icon: React.ReactElement; label: string; colorClass: string; activeColor: string }[] = [
     { id: 'default', icon: <Box />, label: 'Standard', colorClass: 'text-blue-400', activeColor: 'bg-blue-600/20 border-blue-500 shadow-blue-500/20' },
     { id: 'nebula', icon: <Sparkles />, label: 'Space', colorClass: 'text-purple-400', activeColor: 'bg-purple-600/20 border-purple-500 shadow-purple-500/20' },
@@ -85,8 +84,8 @@ const Settings: React.FC<SettingsProps> = ({
   ];
 
   return (
-    <div className="flex-1 p-4 sm:p-6 md:p-10 overflow-y-auto custom-scrollbar bg-transparent">
-      <div className="max-w-4xl mx-auto space-y-8 md:space-y-12 pb-24 md:pb-32">
+    <div className="flex-1 overflow-y-auto custom-scrollbar bg-transparent h-full">
+      <div className="max-w-4xl mx-auto p-4 sm:p-6 md:p-10 space-y-8 md:space-y-12 pb-24 md:pb-32">
         
         {/* Profile Section */}
         <section className="space-y-4 md:space-y-6">
@@ -155,7 +154,6 @@ const Settings: React.FC<SettingsProps> = ({
                 className={`flex flex-col items-center gap-3 md:gap-4 p-4 md:p-5 rounded-2xl sm:rounded-[2rem] border transition-all relative overflow-hidden group ${settings.activeTheme === theme.id ? theme.activeColor + ' scale-105' : 'glass-panel border-white/5 text-slate-500 hover:bg-white/5'}`}
               >
                 <div className={`p-3 md:p-4 rounded-xl md:rounded-2xl bg-white/5 transition-transform group-hover:scale-110 ${settings.activeTheme === theme.id ? theme.colorClass : ''}`}>
-                  {/* Fixed: Cast to React.ReactElement<any> to allow 'size' prop to be passed via cloneElement */}
                   {React.cloneElement(theme.icon as React.ReactElement<any>, { size: 18 })}
                 </div>
                 <span className="text-[8px] sm:text-[9px] md:text-[10px] font-black uppercase tracking-widest text-center">{theme.label}</span>
@@ -217,6 +215,34 @@ const Settings: React.FC<SettingsProps> = ({
                 <div className={`w-4 h-4 sm:w-6 sm:h-6 rounded-full bg-white transition-transform ${settings.searchEnabled ? 'translate-x-6 sm:translate-x-6' : 'translate-x-0'}`}></div>
               </button>
             </div>
+          </div>
+        </section>
+
+        {/* Language Selection */}
+        <section className="space-y-4 md:space-y-6">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-orange-500/20 text-orange-400">
+              <Globe size={20} className="sm:w-6 sm:h-6" />
+            </div>
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight">Linguistic Node</h2>
+              <p className="text-slate-500 text-[9px] sm:text-sm font-bold uppercase tracking-widest">Interface Language</p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:gap-4">
+             <button 
+               onClick={() => update('language', Language.EN)}
+               className={`p-5 rounded-[2rem] glass-panel border transition-all font-black text-xs uppercase tracking-widest ${settings.language === Language.EN ? 'border-orange-500 bg-orange-500/10 text-orange-400 shadow-xl' : 'border-white/5 text-slate-500'}`}
+             >
+               English
+             </button>
+             <button 
+               onClick={() => update('language', Language.TR)}
+               className={`p-5 rounded-[2rem] glass-panel border transition-all font-black text-xs uppercase tracking-widest ${settings.language === Language.TR ? 'border-orange-500 bg-orange-500/10 text-orange-400 shadow-xl' : 'border-white/5 text-slate-500'}`}
+             >
+               Türkçe
+             </button>
           </div>
         </section>
 
