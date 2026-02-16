@@ -20,7 +20,7 @@ export default async function handler(req: any, res: any) {
     // 1. Hugging Face API İsteği
     // Model: black-forest-labs/FLUX.1-dev (Kalite ve yazı için en iyisi)
     const response = await fetch(
-      "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-dev",
+      "https://router.huggingface.co/models/black-forest-labs/FLUX.1-dev",
       {
         headers: {
           "Authorization": `Bearer ${process.env.HF_TOKEN}`, // Vercel'e HF_TOKEN ekle
