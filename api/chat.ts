@@ -1,96 +1,70 @@
-import { GoogleGenAI } from "@google/genai";
+import OpenAI from "openai";
 
 export const config = {
-  runtime: "nodejs",
+  runtime: "nodejs", // DeepSeek streaming için Node.js runtime daha stabildir
 };
 
-/**
- * BurakAI Multi-Modal Chat Handler
- * Model: gemini-3-pro-preview
- * Features: Native Vision, Google Search Grounding, Streamed Responses
- */
+const openai = new OpenAI({
+  apiKey: process.env.DEEPSEEK_API_KEY,
+  baseURL: "https://api.deepseek.com", // DeepSeek endpoint'i
+});
+
 export default async function handler(req: any, res: any) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
   }
 
   try {
-    const { prompt, history, settings, attachments, researchEnabled } = req.body;
+    const { prompt, history, settings, researchEnabled } = req.body;
 
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    // DeepSeek Modelleri: 
+    // 1. "deepseek-chat" (V3 - Genel kullanım ve kod için)
+    // 2. "deepseek-reasoner" (R1 - Akıl yürütme ve çok karmaşık kod sorunları için)
+    const activeModel = researchEnabled ? "deepseek-reasoner" : "deepseek-chat";
 
-    // Construct contents for Gemini API
-    const contents: any[] = [];
+    const messages: any[] = [
+      { 
+        role: "system", 
+        content: (settings?.systemPrompt || "You are BurakAI, a high-performance neural assistant.") +
+                 "\nKeep responses concise, professional, and use markdown."
+      }
+    ];
 
-    // Add conversation history
+    // Geçmiş mesajları ekle
     if (history && history.length > 0) {
       history.forEach((msg: any) => {
-        contents.push({
-          role: msg.role === "user" ? "user" : "model",
-          parts: [{ text: msg.content }],
+        messages.push({
+          role: msg.role === "user" ? "user" : "assistant",
+          content: msg.content,
         });
       });
     }
 
-    // Prepare current user turn with potential images
-    const currentParts: any[] = [{ text: prompt }];
+    // Mevcut prompt'u ekle
+    messages.push({ role: "user", content: prompt });
 
-    if (attachments && attachments.length > 0) {
-      attachments.forEach((att: any) => {
-        if (att.type === 'image') {
-          currentParts.push({
-            inlineData: {
-              mimeType: att.mimeType,
-              data: att.data // base64 string
-            }
-          });
-        }
-      });
-    }
-
-    contents.push({
-      role: "user",
-      parts: currentParts,
-    });
-
-    // Configuration including System Instruction and Tools
-    const config: any = {
-      systemInstruction: (settings?.systemPrompt || "You are BurakAI, a high-performance neural assistant.") +
-        "\n\nVISUAL ANALYSIS:\n" +
-        "- You have native vision. Analyze images with extreme precision.\n" +
-        "- If asked to draw, use [GENERATE_IMAGE: {description}].\n" +
-        "\nRESEARCH MODE:\n" +
-        "- If research mode is active, use Google Search to provide up-to-date information.\n" +
-        "\nFORMATTING:\n" +
-        "- Use clear spacing, markdown, and keep responses concise yet professional.",
+    const stream = await openai.chat.completions.create({
+      model: activeModel,
+      messages: messages,
       temperature: settings?.creativity ?? 0.7,
-    };
-
-    // Enable Google Search if Research Mode is on
-    if (researchEnabled) {
-      config.tools = [{ googleSearch: {} }];
-    }
-
-    // gemini-3-pro-preview is required for high-quality multi-modal and search tasks
-    const responseStream = await ai.models.generateContentStream({
-      model: "gemini-3-pro-preview",
-      contents,
-      config,
+      stream: true, // Streaming açık
     });
 
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader("Transfer-Encoding", "chunked");
+    // Header ayarları (Vercel ve tarayıcı streaming için)
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
 
-    for await (const chunk of responseStream) {
-      const text = chunk.text;
-      if (text) {
-        res.write(text);
+    for await (const chunk of stream) {
+      const content = chunk.choices[0]?.delta?.content || "";
+      if (content) {
+        res.write(content);
       }
     }
 
     res.end();
   } catch (error: any) {
-    console.error("[BURAKAI_CORE_ERROR]", error);
-    res.status(500).json({ error: error.message || "Neural link failure: Gemini Engine error." });
+    console.error("[DEEPSEEK_ERROR]", error);
+    res.status(500).json({ error: error.message || "DeepSeek Engine Link Failure." });
   }
 }
