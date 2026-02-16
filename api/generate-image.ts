@@ -1,3 +1,4 @@
+
 export const config = {
   runtime: 'nodejs',
 };
@@ -20,7 +21,7 @@ export default async function handler(req: any, res: any) {
     // 1. Hugging Face API İsteği
     // Model: black-forest-labs/FLUX.1-dev (Kalite ve yazı için en iyisi)
     const response = await fetch(
-      "https://router.huggingface.co/models/black-forest-labs/FLUX.1-dev",
+      "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-dev",
       {
         headers: {
           "Authorization": `Bearer ${process.env.HF_TOKEN}`, // Vercel'e HF_TOKEN ekle
@@ -43,8 +44,13 @@ export default async function handler(req: any, res: any) {
 
     // 3. Görseli Blob olarak al ve Base64'e çevir
     const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
-    const base64Data = buffer.toString('base64');
+    // Fix: Replaced Node-specific Buffer with cross-runtime btoa conversion to resolve 'Cannot find name Buffer'
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    for (let i = 0; i < bytes.byteLength; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    const base64Data = btoa(binary);
     
     // HF genellikle görseli image/jpeg veya image/png olarak döner
     const contentType = response.headers.get("content-type") || "image/png";

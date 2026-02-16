@@ -63,8 +63,22 @@ export const TRANSLATIONS: Record<Language, any> = {
       rateLimit: 'Cooling down... Wait 60s.'
     },
     images: { title: 'Neural Synthesis', subtitle: 'Artificially Imagined Reality', placeholder: 'Describe vision...', generate: 'Generate', generating: 'Synthesizing...', empty: 'No Art Found', emptySub: 'Initiate synthesis' },
-    auth: { login: 'Access Core', signup: 'Register Core', uplink: 'Secure Uplink', email: 'Identifier', password: 'Key', initiate: 'Initiate', secure: 'Secure', multiNode: 'Multi-Node', missing: 'No id?', join: 'Join', found: 'Id found?', access: 'Access' },
-    banned: { title: 'PURGED', desc: 'Access restricted', device: 'Blocked', expires: 'Ends in: ', permanent: 'Permanent' },
+    auth: { 
+      login: 'Access Core', 
+      signup: 'Register Core', 
+      uplink: 'Secure Uplink', 
+      email: 'Identifier', 
+      password: 'Key', 
+      initiate: 'Initiate', 
+      secure: 'Secure', 
+      multiNode: 'Multi-Node', 
+      missing: 'No id?', 
+      join: 'Join', 
+      found: 'Id found?', 
+      access: 'Access',
+      nameTaken: 'This name is already taken'
+    },
+    banned: { title: 'PURGED', desc: 'Access restricted', device: 'Blocked', expires: 'Ends in: ', permanent: 'Permanent', reason: 'Violation Detail' },
     settings: { profile: 'Identity', profileSub: 'Neural footprint', theme: 'Environment', themeSub: 'Atmosphere', aiEngine: 'Engine', aiEngineSub: 'Model parameters', signOut: 'Sever Link', version: 'BurakAI v3.5.0-ultra' },
     downloads: {
       title: 'Get the App',
@@ -112,8 +126,22 @@ export const TRANSLATIONS: Record<Language, any> = {
       rateLimit: 'Soğuma süresi... 60 saniye bekleyin.'
     },
     images: { title: 'Nöral Sentez', subtitle: 'Yapay Hayal Gücü', placeholder: 'Vizyonunuz...', generate: 'Oluştur', generating: 'Sentezleniyor...', empty: 'Sanat Yok', emptySub: 'Sentezi başlat' },
-    auth: { login: 'Giriş', signup: 'Kayıt', uplink: 'Güvenli Bağlantı', email: 'E-posta', password: 'Şifre', initiate: 'Başlat', secure: 'Güvenli', multiNode: 'Çoklu Düğüm', missing: 'Hesap yok mu?', join: 'Kayıt ol', found: 'Hesap var mı?', access: 'Giriş yap' },
-    banned: { title: 'ENGELLEDİNİZ', desc: 'Erişim kısıtlandı', device: 'Cihaz Engellendi', expires: 'Bitiş: ', permanent: 'Kalıcı' },
+    auth: { 
+      login: 'Giriş', 
+      signup: 'Kayıt', 
+      uplink: 'Güvenli Bağlantı', 
+      email: 'E-posta', 
+      password: 'Şifre', 
+      initiate: 'Başlat', 
+      secure: 'Güvenli', 
+      multiNode: 'Çoklu Düğüm', 
+      missing: 'Hesap yok mu?', 
+      join: 'Kayıt ol', 
+      found: 'Hesap var mı?', 
+      access: 'Giriş yap',
+      nameTaken: 'Bu isim zaten alındı'
+    },
+    banned: { title: 'ENGELLEDİNİZ', desc: 'Erişim kısıtlandı', device: 'Cihaz Engellendi', expires: 'Bitiş: ', permanent: 'Kalıcı', reason: 'İhlal Detayı' },
     settings: { profile: 'Kimlik', theme: 'Çevresel Geçersiz Kılma', aiEngine: 'Bilişsel Motor', signOut: 'Bağlantıyı Kes', version: 'BurakAI v3.5.0-ultra' },
     downloads: {
       title: 'Uygulamayı Al',
@@ -122,7 +150,7 @@ export const TRANSLATIONS: Record<Language, any> = {
       windows: 'Windows (EXE)',
       apple: 'Apple (PWA)',
       pwaDesc: 'Safari\'de BurakAI\'yi açın ve yüklemek için "Ana Ekrana Ekle"yi kullanın.',
-      apkDesc: 'Android cihazlar için APK dosyasını indirin.',
+      apkDesc: 'Android cihazger için APK dosyasını indirin.',
       exeDesc: 'Windows güç kullanıcıları için masaüstü deneyimi.',
       downloadNow: 'Şimdi İndir'
     }

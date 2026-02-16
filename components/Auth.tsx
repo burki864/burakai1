@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { User as UserIcon, Move, Chrome, ShieldAlert, Loader2, Info, Zap } from 'lucide-react';
-import { isSupabaseConfigured, createProfile } from '../services/supabase';
+import { isSupabaseConfigured, createProfile, dbService } from '../services/supabase';
 import { User, Language } from '../types';
 import { TRANSLATIONS } from '../constants';
 import Logo from './Logo';
@@ -32,11 +32,12 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
+  // Fix: Initializing dragStart with default values as 'e' is not available during component initialization
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const cardRef = useRef<HTMLDivElement>(null);
 
   const t = TRANSLATIONS[lang].auth || {
-    login: 'Access Core', initiate: 'Initiate Link'
+    login: 'Access Core', initiate: 'Initiate Link', nameTaken: 'This name is already taken'
   };
 
   useEffect(() => {
@@ -96,34 +97,44 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     setLoading(true);
     setError(null);
 
-    // Neural Uplink: Prioritize Frictionless Entry
-    setTimeout(async () => {
-      const user: User = {
-        id: generateUUID(),
-        email: `${cleanName.toLowerCase().replace(/\s+/g, '.')}@burakai.local`,
-        name: cleanName,
-        provider: 'email',
-        createdAt: new Date().toISOString(),
-        plan: 'free'
-      };
-
-      try {
-        if (isSupabaseConfigured) {
-          // We call createProfile but don't 'await' it to block login
-          // The service now handles FK errors internally
-          createProfile(user).catch(err => console.debug("Silent DB bypass:", err));
+    try {
+      // 1. Check if name is taken
+      if (isSupabaseConfigured) {
+        const isAvailable = await dbService.checkUsernameAvailability(cleanName);
+        if (!isAvailable) {
+          setError(t.nameTaken);
+          setLoading(false);
+          return;
         }
-        
-        // Always login locally even if DB sync is skipped or fails
-        onLogin(user);
-      } catch (err: any) {
-        // Only show error if it's truly critical
-        setError("Uplink unstable. Proceeding in local-only mode.");
-        setTimeout(() => onLogin(user), 1000);
-      } finally {
-        setLoading(false);
       }
-    }, 800);
+
+      // 2. Proceed with Uplink
+      setTimeout(async () => {
+        const user: User = {
+          id: generateUUID(),
+          email: `${cleanName.toLowerCase().replace(/\s+/g, '.')}@burakai.local`,
+          name: cleanName,
+          provider: 'email',
+          createdAt: new Date().toISOString(),
+          plan: 'free'
+        };
+
+        try {
+          if (isSupabaseConfigured) {
+            await createProfile(user);
+          }
+          onLogin(user);
+        } catch (err: any) {
+          setError("Uplink unstable. Proceeding in local-only mode.");
+          setTimeout(() => onLogin(user), 1000);
+        } finally {
+          setLoading(false);
+        }
+      }, 800);
+    } catch (err) {
+      setError("Neural node timeout. Try again.");
+      setLoading(false);
+    }
   };
 
   const handleGoogleLogin = () => {

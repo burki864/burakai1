@@ -6,6 +6,7 @@ export interface UserProfile {
   avatar_url?: string;
   banned: boolean;
   ban_until?: string | null;
+  reason?: string;
   created_at: string;
 }
 

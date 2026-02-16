@@ -33,6 +33,7 @@ const App: React.FC = () => {
     isBanned: false,
     expiresAt: undefined
   });
+  const [banReason, setBanReason] = useState<string | undefined>(undefined);
   const [isSecurityLoading, setIsSecurityLoading] = useState(true);
 
   useEffect(() => storageService.setUser(user), [user]);
@@ -46,7 +47,16 @@ const App: React.FC = () => {
       if (user?.id) {
         setIsSecurityLoading(true);
         const status = await dbService.checkBanStatus(user.id);
-        setBanStatus(status);
+        
+        // If profile deleted on Supabase, logout
+        if (!status.exists) {
+          handleLogout();
+          setIsSecurityLoading(false);
+          return;
+        }
+
+        setBanStatus({ isBanned: status.isBanned, expiresAt: status.expiresAt });
+        setBanReason(status.reason);
         setIsSecurityLoading(false);
       } else {
         setIsSecurityLoading(false);
@@ -83,6 +93,7 @@ const App: React.FC = () => {
     setView('chat'); 
     setShowIntro(false); 
     setBanStatus({ isBanned: false, expiresAt: undefined });
+    setBanReason(undefined);
     storageService.setUser(null);
   };
 
@@ -96,7 +107,7 @@ const App: React.FC = () => {
 
   // Güvenlik katmanı: Banlıysa her şeyi durdur ve ekranı göster
   if (banStatus.isBanned) {
-    return <BannedScreen lang={settings.language} expiresAt={banStatus.expiresAt} />;
+    return <BannedScreen lang={settings.language} expiresAt={banStatus.expiresAt} reason={banReason} />;
   }
 
   // Kullanıcı yoksa Login ekranı

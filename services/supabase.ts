@@ -1,3 +1,4 @@
+
 import { createClient } from '@supabase/supabase-js';
 import { User } from '../types';
 
@@ -105,18 +106,41 @@ export async function sendMessage(userId: string, text: string, role: 'user' | '
  * Includes Image, Video, and Ban Management
  */
 export const dbService = {
+  // --- KULLANICI ADI KULLANIMDA MI? ---
+  checkUsernameAvailability: async (username: string): Promise<boolean> => {
+    if (!isSupabaseConfigured) return true;
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('username')
+        .ilike('username', username)
+        .maybeSingle();
+      
+      if (error) {
+          console.error('Username check error:', error);
+          return true; // Hata durumunda izin ver veya güvenli davran
+      }
+      return !data; // Eğer data varsa (zaten alınmış), false döner
+    } catch (error) {
+      return true;
+    }
+  },
+
   // --- BAN DURUMU KONTROLÜ ---
-  checkBanStatus: async (userId: string): Promise<{ isBanned: boolean; expiresAt?: number }> => {
-    if (!isSupabaseConfigured) return { isBanned: false };
+  checkBanStatus: async (userId: string): Promise<{ isBanned: boolean; expiresAt?: number; reason?: string; exists: boolean }> => {
+    if (!isSupabaseConfigured) return { isBanned: false, exists: true };
 
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('banned, banned_until')
+        .select('banned, banned_until, reason')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
-      if (error || !data) return { isBanned: false };
+      if (error) throw error;
+      
+      // Profile deleted on Supabase
+      if (!data) return { isBanned: false, exists: false };
 
       const now = new Date();
       const bannedUntil = data.banned_until ? new Date(data.banned_until) : null;
@@ -126,11 +150,13 @@ export const dbService = {
 
       return {
         isBanned: isCurrentlyBanned,
-        expiresAt: bannedUntil ? bannedUntil.getTime() : undefined
+        expiresAt: bannedUntil ? bannedUntil.getTime() : undefined,
+        reason: data.reason || undefined,
+        exists: true
       };
     } catch (error) {
       console.error('Ban status check failed:', error);
-      return { isBanned: false };
+      return { isBanned: false, exists: true };
     }
   },
 
