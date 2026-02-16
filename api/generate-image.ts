@@ -1,68 +1,67 @@
-
 export const config = {
   runtime: 'nodejs',
 };
 
-/**
- * Hugging Face Inference API üzerinden FLUX modelini kullanır.
- */
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
 
+  const { prompt } = req.body;
+  if (!prompt) {
+    return res.status(400).json({ error: 'Görsel açıklaması eksik.' });
+  }
+
   try {
-    const { prompt } = req.body;
+    console.log("Sistem: Ana motor (Pollinations) başlatılıyor...");
     
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt gereklidir.' });
+    // 1. ADIM: Pollinations AI (Ücretsiz ve Key Gerektirmez)
+    const seed = Math.floor(Math.random() * 1000000);
+    const pollinationsUrl = `https://pollinations.ai/p/${encodeURIComponent(prompt)}?width=1024&height=1024&seed=${seed}&model=flux&nologo=true`;
+
+    const pollResponse = await fetch(pollinationsUrl);
+
+    if (pollResponse.ok) {
+      // Pollinations başarılıysa direkt dönüyoruz
+      return res.status(200).json({ imageUrl: pollinationsUrl });
     }
 
-    // 1. Hugging Face API İsteği
-    // Model: black-forest-labs/FLUX.1-dev (Kalite ve yazı için en iyisi)
-    const response = await fetch(
-      "https://api-inference.huggingface.co/models/black-forest-labs/FLUX.1-dev",
-      {
-        headers: {
-          "Authorization": `Bearer ${process.env.HF_TOKEN}`, // Vercel'e HF_TOKEN ekle
-          "Content-Type": "application/json",
-        },
-        method: "POST",
-        body: JSON.stringify({ inputs: prompt }),
+    throw new Error("Pollinations cevap vermedi, yedek motora geçiliyor...");
+
+  } catch (primaryError) {
+    console.warn("[YEDEK MOTORA GEÇİLDİ]", primaryError);
+
+    try {
+      // 2. ADIM: Hugging Face (Yedek Motor - FLUX Schnell)
+      const modelId = "black-forest-labs/FLUX.1-schnell";
+      const hfResponse = await fetch(
+        `https://api-inference.huggingface.co/models/${modelId}`,
+        {
+          headers: {
+            "Authorization": `Bearer ${process.env.HF_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          body: JSON.stringify({ inputs: prompt }),
+        }
+      );
+
+      if (!hfResponse.ok) {
+        throw new Error("Yedek motor (HF) da başarısız oldu.");
       }
-    );
 
-    // 2. Hata Kontrolü
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      // 503 Hatası: Model yükleniyor demektir, 1033 gibi kalıcı bir hata değildir.
-      if (response.status === 503) {
-        throw new Error('Model şu an yükleniyor, lütfen 10-20 saniye sonra tekrar dene.');
-      }
-      throw new Error(errorData.error || 'Hugging Face bir hata döndürdü.');
+      const arrayBuffer = await hfResponse.arrayBuffer();
+      const base64Data = Buffer.from(arrayBuffer).toString('base64');
+      const contentType = hfResponse.headers.get("content-type") || "image/png";
+
+      return res.status(200).json({ 
+        imageUrl: `data:${contentType};base64,${base64Data}` 
+      });
+
+    } catch (secondaryError: any) {
+      return res.status(500).json({ 
+        error: "Tüm görsel motorları şu an meşgul. Lütfen birazdan tekrar dene." 
+      });
     }
-
-    // 3. Görseli Blob olarak al ve Base64'e çevir
-    const arrayBuffer = await response.arrayBuffer();
-    // Fix: Replaced Node-specific Buffer with cross-runtime btoa conversion to resolve 'Cannot find name Buffer'
-    const bytes = new Uint8Array(arrayBuffer);
-    let binary = '';
-    for (let i = 0; i < bytes.byteLength; i++) {
-      binary += String.fromCharCode(bytes[i]);
-    }
-    const base64Data = btoa(binary);
-    
-    // HF genellikle görseli image/jpeg veya image/png olarak döner
-    const contentType = response.headers.get("content-type") || "image/png";
-    const imageUrl = `data:${contentType};base64,${base64Data}`;
-
-    // 4. Yanıtı Döndür
-    return res.status(200).json({ imageUrl });
-
-  } catch (error: any) {
-    console.error('[HF-ERROR]', error);
-    return res.status(500).json({ 
-      error: error.message || 'Hugging Face ile görsel üretilemedi.' 
-    });
   }
 }

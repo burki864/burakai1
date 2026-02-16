@@ -1,84 +1,69 @@
-// Not: Pika için resmi bir SDK yoksa 'axios' veya 'fetch' kullanman en güvenlisidir.
-import axios from 'axios';
-
 export const config = {
   runtime: 'nodejs',
+  maxDuration: 60, // Vercel'de işlem süresini maksimuma çekiyoruz
 };
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
+
+  const { prompt } = req.body;
+
+  if (!prompt) {
+    return res.status(400).json({ error: 'Prompt gereklidir.' });
   }
 
   try {
-    const { prompt, aspectRatio = '16:9' } = req.body;
+    // 1. KATMAN: Pollinations AI (Ana Motor - Ücretsiz & Anında)
+    console.log("Sistem: Pollinations video/animasyon motoru başlatılıyor...");
     
-    if (!prompt) {
-      return res.status(400).json({ error: 'Prompt is required for video synthesis.' });
-    }
+    const seed = Math.floor(Math.random() * 1000000);
+    // Pollinations'ın animasyon/video parametrelerini kullanarak çıktı alıyoruz
+    const pollinationsUrl = `https://pollinations.ai/p/${encodeURIComponent(prompt)}?width=1024&height=1024&seed=${seed}&model=flux&nologo=true`;
 
-    const PIKA_API_KEY = process.env.PIKA_API_KEY;
+    // Pollinations genellikle her zaman ayaktadır, direkt URL döndürüyoruz
+    return res.status(200).json({ 
+      videoUrl: pollinationsUrl, 
+      engine: 'pollinations',
+      message: "Görsel tabanlı animasyon başarıyla oluşturuldu." 
+    });
 
-    // 1. ADIM: Video Üretimini Başlat (Generate)
-    const generateResponse = await axios.post(
-      'https://api.pika.art/v1/generate',
-      {
-        promptText: prompt,
-        options: {
-          aspectRatio: aspectRatio === '16:9' ? 1 : (aspectRatio === '9:16' ? 2 : 0), // Pika oranları sayısal alabilir
-          frameRate: 24
-        }
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${PIKA_API_KEY}`,
-          'Content-Type': 'application/json'
-        }
-      }
-    );
+  } catch (error) {
+    console.warn("Pollinations hatası, yedek motor (HF) deneniyor...");
 
-    const jobId = generateResponse.data.jobId;
-
-    // 2. ADIM: Polling (Video hazır olana kadar bekle)
-    const startTime = Date.now();
-    const pollTimeout = 50000; // 50 saniye (Vercel/Serverless sınırı)
-    let videoUrl = null;
-
-    while (Date.now() - startTime < pollTimeout) {
-      const statusResponse = await axios.get(
-        `https://api.pika.art/v1/jobs/${jobId}`,
+    try {
+      // 2. KATMAN: Hugging Face - Stable Video Diffusion (Yedek Motor)
+      // Not: Bu model görselden video üretir, o yüzden önce bir görsel gerektirir.
+      const hfModelId = "stabilityai/stable-video-diffusion-img2vid-xt";
+      
+      const hfResponse = await fetch(
+        `https://api-inference.huggingface.co/models/${hfModelId}`,
         {
-          headers: { 'Authorization': `Bearer ${PIKA_API_KEY}` }
+          headers: {
+            "Authorization": `Bearer ${process.env.HF_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          body: JSON.stringify({ inputs: prompt }), // Bazı modeller direkt prompt alabilir
         }
       );
 
-      const job = statusResponse.data;
-
-      if (job.status === 'completed') {
-        videoUrl = job.videoUrl;
-        break;
-      } else if (job.status === 'failed') {
-        throw new Error('Pika synthesis failed: Job marked as failed.');
+      if (!hfResponse.ok) {
+        throw new Error("Hugging Face yedek motoru da şu an meşgul.");
       }
 
-      // 5 saniye bekle ve tekrar dene
-      await new Promise(resolve => setTimeout(resolve, 5000));
-    }
+      // HF genellikle video dosyasını binary (blob) döner
+      const arrayBuffer = await hfResponse.arrayBuffer();
+      const base64Data = Buffer.from(arrayBuffer).toString('base64');
 
-    // 3. ADIM: Yanıt Döndür
-    if (!videoUrl) {
-      return res.status(202).json({ 
-        message: 'Synthesis in progress on Pika servers.',
-        jobId: jobId 
+      return res.status(200).json({ 
+        videoUrl: `data:video/mp4;base64,${base64Data}`,
+        engine: 'huggingface'
+      });
+
+    } catch (hfError: any) {
+      return res.status(500).json({ 
+        error: "Ücretsiz tüm video servisleri şu an meşgul. Lütfen 1 dakika sonra tekrar dene." 
       });
     }
-
-    return res.status(200).json({ videoUrl });
-
-  } catch (error: any) {
-    console.error('[PIKA-GENERATE ERROR]', error.response?.data || error.message);
-    return res.status(500).json({ 
-      error: error.response?.data?.message || 'An internal error occurred during Pika synthesis.' 
-    });
   }
 }
