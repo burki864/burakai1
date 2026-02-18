@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { ShieldAlert, Clock, Lock, Info } from 'lucide-react'; // LogOut kaldırıldı
+import { ShieldAlert, Clock, Lock, Info, LogOut } from 'lucide-react';
 import { Language } from '../types';
 import { TRANSLATIONS } from '../constants';
 
@@ -25,6 +26,8 @@ const BannedScreen: React.FC<BannedScreenProps> = ({ lang, expiresAt, reason }) 
 
       if (diff <= 0) {
         setTimeLeft("0d 0h 0m 0s");
+        // Trigger a check or reload when time expires
+        window.location.reload();
         return;
       }
 
@@ -40,6 +43,11 @@ const BannedScreen: React.FC<BannedScreenProps> = ({ lang, expiresAt, reason }) 
     const interval = setInterval(updateTimer, 1000);
     return () => clearInterval(interval);
   }, [expiresAt, t.permanent]);
+
+  const handleLogout = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
 
   return (
     <div className="fixed inset-0 bg-[#020617] flex items-center justify-center p-6 z-[999] overflow-hidden">
@@ -103,7 +111,13 @@ const BannedScreen: React.FC<BannedScreenProps> = ({ lang, expiresAt, reason }) 
           </div>
         )}
 
-        {/* Buton kaldırıldı, tasarımın bütünlüğü korunması için alt boşluk kendiliğinden ayarlanacaktır */}
+        {/* Sever Link Button */}
+        <button 
+          onClick={handleLogout}
+          className="w-full py-6 rounded-3xl bg-slate-900 hover:bg-red-500/10 text-slate-400 hover:text-red-400 font-black uppercase tracking-[0.3em] text-xs transition-all flex items-center justify-center gap-3 border border-white/5"
+        >
+          <LogOut size={16} /> Sever Current Link
+        </button>
       </div>
     </div>
   );

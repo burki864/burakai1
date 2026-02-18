@@ -1,67 +1,73 @@
-export const config = {
-  runtime: 'nodejs',
-};
+import { Client } from "@gradio/client";
+
+export const config = { runtime: 'nodejs' };
+
+// 1. AI OLMAYAN HIZLI ÇEVİRİ FONKSİYONU
+async function translateToEnglish(text: string): Promise<string> {
+  try {
+    const response = await fetch(`https://lingva.ml/api/v1/tr/en/${encodeURIComponent(text)}`);
+    const data = await response.json();
+    return data.translation || text;
+  } catch (error) {
+    return text; // Hata durumunda orijinali kullan
+  }
+}
+
+// 2. PROMPT DETAYLANDIRICI (ENHANCER)
+// Kullanıcının promptuna kalite odaklı anahtar kelimeler ekler
+function enhancePrompt(prompt: string): string {
+  const qualityBoosters = "4k resolution, ultra-realistic, masterpiece, highly detailed, photorealistic, cinematic lighting, 8k uhd, sharp focus";
+  return `${prompt}, ${qualityBoosters}`;
+}
 
 export default async function handler(req: any, res: any) {
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
-  }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Method Not Allowed' });
 
-  const { prompt } = req.body;
-  if (!prompt) {
-    return res.status(400).json({ error: 'Görsel açıklaması eksik.' });
-  }
+  const { prompt: userPrompt } = req.body;
+  if (!userPrompt) return res.status(400).json({ error: 'Görsel açıklaması eksik.' });
 
   try {
-    console.log("Sistem: Ana motor (Pollinations) başlatılıyor...");
+    // ADIM 1: Çeviri
+    let translatedPrompt = await translateToEnglish(userPrompt);
     
-    // 1. ADIM: Pollinations AI (Ücretsiz ve Key Gerektirmez)
-    const seed = Math.floor(Math.random() * 1000000);
-    const pollinationsUrl = `https://pollinations.ai/p/${encodeURIComponent(prompt)}?width=1024&height=1024&seed=${seed}&model=flux&nologo=true`;
+    // ADIM 2: Detaylandırma (Realistic 4k vb. ekleme)
+    const finalPrompt = enhancePrompt(translatedPrompt);
+    
+    console.log(`Final Prompt: ${finalPrompt}`);
 
-    const pollResponse = await fetch(pollinationsUrl);
+    // ADIM 3: FLUX.2-klein-9B Motoru
+    const client = await Client.connect("black-forest-labs/FLUX.2-klein-9B", {
+      hf_token: process.env.HF_TOKEN as `hf_${string}`
+    });
 
-    if (pollResponse.ok) {
-      // Pollinations başarılıysa direkt dönüyoruz
-      return res.status(200).json({ imageUrl: pollinationsUrl });
-    }
+    const result = await client.predict("/infer", { 
+      prompt: finalPrompt,
+      seed: Math.floor(Math.random() * 1000000),
+      width: 1024,
+      height: 1024,
+      guidance_scale: 3.5, // Klein için ideal değer
+      num_inference_steps: 4, 
+    });
 
-    throw new Error("Pollinations cevap vermedi, yedek motora geçiliyor...");
-
-  } catch (primaryError) {
-    console.warn("[YEDEK MOTORA GEÇİLDİ]", primaryError);
-
-    try {
-      // 2. ADIM: Hugging Face (Yedek Motor - FLUX Schnell)
-      const modelId = "black-forest-labs/FLUX.1-schnell";
-      const hfResponse = await fetch(
-        `https://api-inference.huggingface.co/models/${modelId}`,
-        {
-          headers: {
-            "Authorization": `Bearer ${process.env.HF_TOKEN}`,
-            "Content-Type": "application/json",
-          },
-          method: "POST",
-          body: JSON.stringify({ inputs: prompt }),
-        }
-      );
-
-      if (!hfResponse.ok) {
-        throw new Error("Yedek motor (HF) da başarısız oldu.");
-      }
-
-      const arrayBuffer = await hfResponse.arrayBuffer();
-      const base64Data = Buffer.from(arrayBuffer).toString('base64');
-      const contentType = hfResponse.headers.get("content-type") || "image/png";
-
+    if (result.data && result.data[0]) {
+      const imageData = result.data[0];
       return res.status(200).json({ 
-        imageUrl: `data:${contentType};base64,${base64Data}` 
-      });
-
-    } catch (secondaryError: any) {
-      return res.status(500).json({ 
-        error: "Tüm görsel motorları şu an meşgul. Lütfen birazdan tekrar dene." 
+        imageUrl: typeof imageData === 'string' ? imageData : imageData.url,
+        usedPrompt: finalPrompt,
+        engine: "FLUX.2-klein-9B"
       });
     }
+
+    throw new Error("Görsel motoru yanıt vermedi.");
+
+  } catch (error) {
+    // FALLBACK: Pollinations (Yine optimize edilmiş prompt ile)
+    const seed = Math.floor(Math.random() * 1000000);
+    const fallbackUrl = `https://pollinations.ai/p/${encodeURIComponent(enhancePrompt(userPrompt))}?width=1024&height=1024&seed=${seed}&model=flux`;
+    
+    return res.status(200).json({ 
+      imageUrl: fallbackUrl,
+      engine: "Pollinations (Fallback)" 
+    });
   }
 }
