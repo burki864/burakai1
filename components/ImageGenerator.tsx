@@ -23,15 +23,18 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isHovered, setIsHovered] = useState(false);
+  const [imageSize, setImageSize] = useState<"1K" | "2K" | "4K">("1K");
+  const [aspectRatio, setAspectRatio] = useState<"1:1" | "3:4" | "4:3" | "9:16" | "16:9">("1:1");
 
   const t = TRANSLATIONS[settings.language].images;
 
   const handleGenerate = async () => {
     if (!prompt.trim() || isGenerating) return;
+    
     setIsGenerating(true);
     setError(null);
     try {
-      const imageUrl = await geminiService.generateImage(prompt);
+      const imageUrl = await geminiService.generateImage(prompt, aspectRatio, imageSize);
       const newImg: ImageGeneration = { id: Date.now().toString(), prompt: prompt.trim(), url: imageUrl, timestamp: Date.now() };
       
       // PERSIST TO SUPABASE WITH ACTUAL USER ID
@@ -76,6 +79,32 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
               <p className="text-slate-500 font-bold uppercase tracking-widest text-[8px] sm:text-[10px]">{t.subtitle}</p>
             </div>
           </div>
+
+          <div className="flex flex-wrap gap-4 mb-6">
+            <div className="flex gap-2 p-1 glass-panel rounded-2xl bg-white/5">
+              {(["1:1", "3:4", "4:3", "9:16", "16:9"] as const).map((ratio) => (
+                <button 
+                  key={ratio}
+                  onClick={() => setAspectRatio(ratio)} 
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${aspectRatio === ratio ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  {ratio}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-2 p-1 glass-panel rounded-2xl bg-white/5">
+              {(["1K", "2K", "4K"] as const).map((size) => (
+                <button 
+                  key={size}
+                  onClick={() => setImageSize(size)} 
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${imageSize === size ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                >
+                  {size}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="flex flex-col sm:flex-row gap-3 p-2 rounded-[2rem] glass-panel border-white/10">
             <textarea 
               rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)}

@@ -163,43 +163,39 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
       setIsTyping(false);
     } else {
       try {
-        // Pass Research Mode and Attachments (Images) for Multi-Modal analysis
-        const fullResponse = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            prompt: cleanInput, 
-            history: newMessages.slice(-10), 
-            settings, 
-            attachments: currentAttachments,
-            researchEnabled: isResearchMode
-          })
-        });
+        const { text, groundingUrls } = await geminiService.generateTextStream(
+          cleanInput,
+          newMessages.slice(-10),
+          settings,
+          currentAttachments,
+          (chunk) => setStreamingMessage(prev => prev + chunk),
+          isResearchMode
+        );
 
-        if (!fullResponse.ok) throw new Error("Synthesis failed");
-
-        const reader = fullResponse.body?.getReader();
-        const decoder = new TextDecoder();
-        let accumulatedText = "";
-
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            const chunk = decoder.decode(value);
-            accumulatedText += chunk;
-            setStreamingMessage(accumulatedText);
-          }
-        }
-
-        onUpdateMessages([...newMessages, { id: Date.now().toString(), role: 'assistant', content: accumulatedText, timestamp: Date.now() }]);
-        saveToSupabase(user.id, accumulatedText, 'assistant').catch(err => console.debug("Supabase sync issue:", err));
+        onUpdateMessages([...newMessages, { 
+          id: Date.now().toString(), 
+          role: 'assistant', 
+          content: text, 
+          timestamp: Date.now(),
+          groundingUrls
+        }]);
+        saveToSupabase(user.id, text, 'assistant').catch(err => console.debug("Supabase sync issue:", err));
       } catch (err: any) { 
         setError(err.message); 
       } finally { 
         setIsTyping(false); 
         setStreamingMessage(''); 
       }
+    }
+  };
+
+  const handleSpeak = async (text: string) => {
+    try {
+      const audioUrl = await geminiService.generateSpeech(text, settings.language);
+      const audio = new Audio(audioUrl);
+      audio.play();
+    } catch (err: any) {
+      setError("Neural Voice Uplink failed.");
     }
   };
 
@@ -280,8 +276,35 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
               {msg.imageUrl && <div className="w-full max-w-[400px]"><img src={msg.imageUrl} className="w-full aspect-square object-cover rounded-[2rem] shadow-2xl border border-white/10" alt="Neural" /></div>}
               {msg.videoUrl && <div className="w-full max-w-[600px] rounded-[2rem] overflow-hidden shadow-2xl"><video controls autoPlay loop className="w-full"><source src={msg.videoUrl} type="video/mp4" /></video></div>}
               {msg.content && (
-                <div className={`p-4 sm:p-6 md:p-8 lg:p-10 rounded-2xl sm:rounded-[2.5rem] md:rounded-[3rem] text-sm sm:text-base md:text-xl lg:text-2xl font-bold shadow-xl chat-bubble max-w-[88%] ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'glass-panel text-slate-100 rounded-tl-none'}`}>
+                <div className={`p-4 sm:p-6 md:p-8 lg:p-10 rounded-2xl sm:rounded-[2.5rem] md:rounded-[3rem] text-sm sm:text-base md:text-xl lg:text-2xl font-bold shadow-xl chat-bubble max-w-[88%] relative group/msg ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'glass-panel text-slate-100 rounded-tl-none'}`}>
                   {msg.content}
+                  
+                  {msg.role === 'assistant' && (
+                    <button 
+                      onClick={() => handleSpeak(msg.content)}
+                      className="absolute -right-12 top-0 p-3 rounded-full glass-panel border border-white/10 text-slate-500 hover:text-blue-400 opacity-0 group-hover/msg:opacity-100 transition-all"
+                    >
+                      <Mic size={18} />
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {msg.groundingUrls && msg.groundingUrls.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {msg.groundingUrls.map((url, i) => (
+                    <a 
+                      key={i} 
+                      href={url.uri} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-full glass-panel border border-blue-500/20 text-[10px] font-bold text-blue-400 hover:bg-blue-500/10 transition-colors"
+                    >
+                      <Globe size={10} />
+                      <span className="truncate max-w-[150px]">{url.title}</span>
+                      <ExternalLink size={10} />
+                    </a>
+                  ))}
                 </div>
               )}
             </div>

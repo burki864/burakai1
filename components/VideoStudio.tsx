@@ -27,10 +27,6 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ settings, user }) => {
 
   const handleGenerate = async () => {
     if (!prompt.trim() || isGenerating) return;
-    const aistudio = (window as any).aistudio;
-    if (aistudio && !(await aistudio.hasSelectedApiKey())) {
-      try { await aistudio.openSelectKey(); } catch (e) { setError("API Key required."); return; }
-    }
     setIsGenerating(true);
     setError(null);
     setVideoUrl(null);

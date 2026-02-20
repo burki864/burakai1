@@ -14,7 +14,7 @@ import Downloads from './components/Downloads';
 import BannedScreen from './components/BannedScreen';
 import MouseGlow from './components/MouseGlow';
 import IntroAnimation from './components/IntroAnimation';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Zap } from 'lucide-react';
 
 const MotionDiv = motion.div as any;
 
@@ -27,6 +27,30 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<SettingsState>(storageService.getSettings());
   const [view, setView] = useState<AppView>('chat');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [hasApiKey, setHasApiKey] = useState(false);
+
+  // Check for API key on mount and when user changes
+  useEffect(() => {
+    const checkApiKey = async () => {
+      const aistudio = (window as any).aistudio;
+      if (aistudio) {
+        const selected = await aistudio.hasSelectedApiKey();
+        setHasApiKey(selected);
+      } else {
+        // Fallback for local dev if not in AI Studio environment
+        setHasApiKey(true);
+      }
+    };
+    checkApiKey();
+  }, [user]);
+
+  const handleSelectKey = async () => {
+    const aistudio = (window as any).aistudio;
+    if (aistudio) {
+      await aistudio.openSelectKey();
+      setHasApiKey(true);
+    }
+  };
   
   // Ban durumu için yeni state'ler
   const [banStatus, setBanStatus] = useState<{ isBanned: boolean; expiresAt?: number }>({
@@ -112,6 +136,42 @@ const App: React.FC = () => {
 
   // Kullanıcı yoksa Login ekranı
   if (!user) return <Auth onLogin={handleLogin} />;
+
+  // API Key seçilmemişse zorunlu ekran
+  if (!hasApiKey) {
+    return (
+      <div className="h-screen w-full bg-slate-950 flex items-center justify-center p-6">
+        <div className="max-w-md w-full glass-panel p-10 rounded-[3rem] border-white/10 text-center space-y-8">
+          <div className="w-20 h-20 bg-blue-600/20 rounded-3xl flex items-center justify-center mx-auto text-blue-400">
+            <Zap size={40} />
+          </div>
+          <div className="space-y-4">
+            <h2 className="text-3xl font-black tracking-tighter">Neural Uplink Required</h2>
+            <p className="text-slate-400 font-bold leading-relaxed">
+              To access high-performance synthesis (Gemini Pro & Veo), you must connect your Gemini API key.
+            </p>
+            <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-2xl text-[10px] text-blue-400/60 font-mono uppercase tracking-widest">
+              Billing must be enabled on your Google Cloud project.
+            </div>
+          </div>
+          <button 
+            onClick={handleSelectKey}
+            className="w-full py-5 bg-white text-black font-black rounded-2xl shadow-3xl hover:scale-[1.02] transition-all active:scale-95"
+          >
+            Connect Gemini API
+          </button>
+          <a 
+            href="https://ai.google.dev/gemini-api/docs/billing" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="block text-[10px] text-slate-600 hover:text-blue-400 font-black uppercase tracking-[0.2em] transition-colors"
+          >
+            View Billing Documentation
+          </a>
+        </div>
+      </div>
+    );
+  }
 
   // Güvenlik kontrolü yapılırken kısa bir yükleme ekranı (opsiyonel)
   if (isSecurityLoading) return <div className="h-screen w-full bg-slate-950 flex items-center justify-center font-mono text-blue-500 animate-pulse">Neural Link Verifying...</div>;

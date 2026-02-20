@@ -1,9 +1,14 @@
 
-import { SettingsState, Message, Attachment } from "../types";
+import { GoogleGenAI, Modality, Type, GenerateContentResponse, VideoGenerationReferenceType, VideoGenerationReferenceImage } from "@google/genai";
+import { SettingsState, Message, Attachment, Language } from "../types";
 
 export class GeminiService {
+  private getAI() {
+    return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+
   /**
-   * Routes chat request to /api/chat (Server-side Gemini)
+   * Generates text stream using Gemini 3 series models
    */
   async generateTextStream(
     prompt: string,
@@ -12,34 +17,68 @@ export class GeminiService {
     attachments: Attachment[],
     onChunk: (text: string) => void,
     researchEnabled: boolean = false
-  ): Promise<string> {
+  ): Promise<{ text: string; groundingUrls?: { title: string; uri: string }[] }> {
+    const ai = this.getAI();
+    const model = researchEnabled ? "gemini-3-flash-preview" : "gemini-3.1-pro-preview";
+    
+    const contents = history.map(msg => ({
+      role: msg.role === 'user' ? 'user' : 'model',
+      parts: [{ text: msg.content }]
+    }));
+
+    // Add current prompt and attachments
+    const currentParts: any[] = [{ text: prompt }];
+    attachments.forEach(att => {
+      if (att.type === 'image' || att.type === 'video') {
+        currentParts.push({
+          inlineData: {
+            data: att.data,
+            mimeType: att.mimeType
+          }
+        });
+      }
+    });
+
+    contents.push({ role: 'user', parts: currentParts });
+
+    const tools: any[] = [];
+    if (researchEnabled) {
+      tools.push({ googleSearch: {} });
+    }
+
     try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, history, settings, attachments, researchEnabled })
+      const responseStream = await ai.models.generateContentStream({
+        model,
+        contents,
+        config: {
+          systemInstruction: settings.systemPrompt || `You are BurakAI, a highly advanced neural assistant. Personality: ${settings.personality}. Language: ${settings.language}.`,
+          tools,
+          temperature: settings.creativity,
+        }
       });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Synthesis failed');
-      }
-
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
       let fullText = "";
+      let groundingUrls: { title: string; uri: string }[] = [];
 
-      if (!reader) throw new Error('Response stream unavailable');
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        fullText += chunk;
-        onChunk(chunk);
+      for await (const chunk of responseStream) {
+        const text = chunk.text;
+        if (text) {
+          fullText += text;
+          onChunk(text);
+        }
+        
+        // Extract grounding metadata if available (usually in the last chunk or metadata)
+        const chunks = chunk.candidates?.[0]?.groundingMetadata?.groundingChunks;
+        if (chunks) {
+          chunks.forEach((c: any) => {
+            if (c.web) {
+              groundingUrls.push({ title: c.web.title, uri: c.web.uri });
+            }
+          });
+        }
       }
 
-      return fullText;
+      return { text: fullText, groundingUrls: groundingUrls.length > 0 ? groundingUrls : undefined };
     } catch (error: any) {
       console.error("Neural Link Interrupted:", error);
       throw error;
@@ -47,23 +86,30 @@ export class GeminiService {
   }
 
   /**
-   * Routes image synthesis to /api/generate-image
+   * Generates images using gemini-3-pro-image-preview
    */
-  async generateImage(prompt: string, aspectRatio: string = "1:1"): Promise<string> {
+  async generateImage(prompt: string, aspectRatio: "1:1" | "3:4" | "4:3" | "9:16" | "16:9" = "1:1", imageSize: "1K" | "2K" | "4K" = "1K"): Promise<string> {
+    const ai = this.getAI();
     try {
-      const response = await fetch('/api/generate-image', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, aspectRatio })
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-pro-image-preview',
+        contents: {
+          parts: [{ text: prompt }],
+        },
+        config: {
+          imageConfig: {
+            aspectRatio,
+            imageSize
+          }
+        },
       });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Image synthesis failed');
+      for (const part of response.candidates?.[0]?.content?.parts || []) {
+        if (part.inlineData) {
+          return `data:image/png;base64,${part.inlineData.data}`;
+        }
       }
-
-      const data = await response.json();
-      return data.imageUrl;
+      throw new Error("No image data received from neural uplink.");
     } catch (error: any) {
       console.error('Image Synthesis Error:', error);
       throw error;
@@ -71,7 +117,7 @@ export class GeminiService {
   }
 
   /**
-   * Routes video synthesis to /api/generate-video
+   * Generates video using veo-3.1-fast-generate-preview
    */
   async generateVideo(
     prompt: string, 
@@ -79,24 +125,70 @@ export class GeminiService {
     aspectRatio: '16:9' | '9:16' = '16:9', 
     onProgress?: (msg: string) => void
   ): Promise<string> {
-    onProgress?.("Initiating Proxy Uplink...");
+    const ai = this.getAI();
+    onProgress?.("Initiating Veo Synthesis...");
     
     try {
-      const response = await fetch('/api/generate-video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt, userId, aspectRatio })
+      let operation = await ai.models.generateVideos({
+        model: 'veo-3.1-fast-generate-preview',
+        prompt,
+        config: {
+          numberOfVideos: 1,
+          resolution: '1080p',
+          aspectRatio
+        }
       });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || 'Video synthesis failed');
+      while (!operation.done) {
+        onProgress?.("Neural Rendering in Progress...");
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        operation = await ai.operations.getVideosOperation({ operation: operation });
       }
 
-      const data = await response.json();
-      return data.videoUrl;
+      const downloadLink = operation.response?.generatedVideos?.[0]?.video?.uri;
+      if (!downloadLink) throw new Error("Video generation failed - no link received.");
+
+      const response = await fetch(downloadLink, {
+        method: 'GET',
+        headers: {
+          'x-goog-api-key': process.env.GEMINI_API_KEY || '',
+        },
+      });
+
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
     } catch (error: any) {
       console.error("Video Proxy Error:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Generates speech using gemini-2.5-flash-preview-tts
+   */
+  async generateSpeech(text: string, language: Language = Language.EN): Promise<string> {
+    const ai = this.getAI();
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash-preview-tts",
+        contents: [{ parts: [{ text: `Say clearly in ${language === Language.TR ? 'Turkish' : 'English'}: ${text}` }] }],
+        config: {
+          responseModalities: [Modality.AUDIO],
+          speechConfig: {
+            voiceConfig: {
+              prebuiltVoiceConfig: { voiceName: 'Puck' },
+            },
+          },
+        },
+      });
+
+      const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+      if (base64Audio) {
+        return `data:audio/wav;base64,${base64Audio}`;
+      }
+      throw new Error("Speech synthesis failed.");
+    } catch (error: any) {
+      console.error("TTS Error:", error);
       throw error;
     }
   }

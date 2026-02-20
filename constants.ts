@@ -7,15 +7,15 @@ export const DEFAULT_SETTINGS: SettingsState = {
   showTimestamps: true,
   personality: Personality.Normal,
   creativity: 0.7,
-  systemPrompt: 'You are BurakAI, a high-performance neural assistant powered by Groq. You are helpful, precise, and respond with extreme speed.',
+  systemPrompt: 'You are BurakAI, a high-performance neural assistant powered by Gemini 3. You are helpful, precise, and respond with extreme speed.',
   searchEnabled: false,
   activeTheme: 'default'
 };
 
 export const MODELS = {
-  text: 'llama-3.3-70b-versatile',
-  image: 'gemini-2.5-flash-image',
-  video: 'pika-1.0'
+  text: 'gemini-3.1-pro-preview',
+  image: 'gemini-3-pro-image-preview',
+  video: 'veo-3.1-fast-generate-preview'
 };
 
 export const INTENT_KEYWORDS = {
@@ -37,7 +37,7 @@ export const TRANSLATIONS: Record<Language, any> = {
     },
     chat: {
       welcome: 'BurakAI Ultra',
-      subtitle: 'Powered by Groq • Creative Vision • Neural Synthesis',
+      subtitle: 'Powered by Gemini 3 • Creative Vision • Neural Synthesis',
       init: 'Initiate Link',
       placeholder: 'Ask anything or use "/" for tools...',
       searchOn: 'Web Search Active',
@@ -49,15 +49,15 @@ export const TRANSLATIONS: Record<Language, any> = {
       video: 'Synthesize Video',
       rateLimit: 'Wait 60s between video links.',
       features: [
-        { title: 'Groq Speed', desc: 'Instant responses via Llama 3.3 70B' },
-        { title: 'Vision Core', desc: 'Analyze images with Llama 3.2 Vision' },
-        { title: 'Video Synth', desc: 'Generate 1080p neural clips' }
+        { title: 'Gemini Intelligence', desc: 'Advanced reasoning via Gemini 3.1 Pro' },
+        { title: 'Vision Core', desc: 'Analyze images and videos with Multi-Modal AI' },
+        { title: 'Veo Synth', desc: 'Generate high-quality neural motion clips' }
       ]
     },
     video: {
-      title: 'Pika Cinematic',
-      subtitle: 'Pika 1.0 Neural Engine • AI Motion Synthesis',
-      placeholder: 'Describe your cinematic vision for Pika...',
+      title: 'Veo Cinematic',
+      subtitle: 'Veo 3.1 Neural Engine • AI Motion Synthesis',
+      placeholder: 'Describe your cinematic vision for Veo...',
       generate: 'Generate Video',
       empty: 'No Clips Synthesized',
       rateLimit: 'Cooling down... Wait 60s.'
@@ -105,7 +105,7 @@ export const TRANSLATIONS: Record<Language, any> = {
     },
     chat: {
       welcome: 'BurakAI Ultra',
-      subtitle: 'Groq Altyapısı • Yaratıcı Vizyon • Nöral Sentez',
+      subtitle: 'Gemini 3 Altyapısı • Yaratıcı Vizyon • Nöral Sentez',
       init: 'Bağlantıyı Başlat',
       placeholder: 'Bir şey sorun veya "/" ile araçları görün...',
       searchOn: 'Web Araması Aktif',
@@ -118,9 +118,9 @@ export const TRANSLATIONS: Record<Language, any> = {
       rateLimit: 'Videolar arası 60 saniye bekleyin.'
     },
     video: {
-      title: 'Pika Sinematik',
-      subtitle: 'Pika 1.0 Motoru • Yapay Zeka Hareket Sentezi',
-      placeholder: 'Pika için sinematik vizyonunuzu tarif edin...',
+      title: 'Veo Sinematik',
+      subtitle: 'Veo 3.1 Motoru • Yapay Zeka Hareket Sentezi',
+      placeholder: 'Veo için sinematik vizyonunuzu tarif edin...',
       generate: 'Video Oluştur',
       empty: 'Sentezlenmiş Klip Yok',
       rateLimit: 'Soğuma süresi... 60 saniye bekleyin.'
