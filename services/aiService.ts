@@ -1,49 +1,31 @@
-import { SettingsState, Message, Attachment } from "../types";
+import { Message } from "../types";
 
 const MODELS = {
-  CHAT: "Qwen/Qwen2.5-72B-Instruct", // Çok zeki ve okunaklı Türkçe yanıtlar
-  IMAGE: "black-forest-labs/FLUX.1-schnell", // Hızlı ve yüksek kalite görsel
-  VIDEO: "ali-vilab/modelscope-damo-text-to-video-synthesis" // Temel video üretimi
+  CHAT: "Qwen/Qwen2.5-72B-Instruct", 
+  IMAGE: "black-forest-labs/FLUX.1-schnell", 
+  VIDEO: "ali-vilab/modelscope-damo-text-to-video-synthesis" 
 };
+
+// CORS hatasını aşmak için proxy URL'si (Gerekirse başına eklenir)
+const PROXY_URL = "https://corsproxy.io/?"; 
 
 export class AIService {
   private getApiKey(): string {
-    const apiKey = import.meta.env.VITE_HUGGINGFACE_TOKEN;
-    if (!apiKey) {
-      throw new Error("Hugging Face Token bulunamadı. Lütfen Vercel panelinden VITE_HUGGINGFACE_TOKEN değişkenini ekleyin.");
-    }
-    return apiKey;
+    const apiKey = import.meta.env.VITE_HUGGINGFACE_TOKEN || import.meta.env.VITE_HUGGING_FACE_TOKEN;
+    if (!apiKey) throw new Error("KRİTİK HATA: VITE_HUGGINGFACE_TOKEN bulunamadı!");
+    return apiKey.trim();
   }
 
   /**
-   * Yanıtı daha okunaklı hale getirmek için metni manipüle eder.
+   * Chat Fonksiyonu - Detaylı Hata Yakalama Eklenmiş
    */
-  private formatResponse(text: string): string {
-    return text
-      .replace(/([.!?])\s*(?=[A-ZÇĞİÖŞÜ])/g, "$1\n\n") // Cümle sonlarına çift satır ekler
-      .trim();
-  }
-
-  /**
-   * Chat Fonksiyonu (Hugging Face Inference API)
-   */
-  async generateText(
-    prompt: string,
-    history: Message[],
-    settings: SettingsState,
-    onChunk?: (text: string) => void
-  ): Promise<string> {
+  async generateText(prompt: string, history: Message[]): Promise<string> {
     const apiKey = this.getApiKey();
-    
-    // Sistem talimatı ile okunaklılık zorunluluğu
-    const systemInstruction = `Sen BurakAI'sın. Yanıtlarını her zaman ferah, paragraflar arasında boşluk bırakarak ve okunaklı bir şekilde ver.`;
-    
-    // Geçmişi formatla
-    const formattedHistory = history.map(m => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`).join("\n");
-    const fullPrompt = `<|system|>\n${systemInstruction}\n${formattedHistory}\nUser: ${prompt}\nAssistant:`;
+    const fullPrompt = `User: ${prompt}\nAssistant:`;
+    const targetUrl = `${PROXY_URL}https://api-inference.huggingface.co/models/${MODELS.CHAT}`;
 
     try {
-      const response = await fetch(`https://api-inference.huggingface.co/models/${MODELS.CHAT}`, {
+      const response = await fetch(targetUrl, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -51,67 +33,60 @@ export class AIService {
         },
         body: JSON.stringify({
           inputs: fullPrompt,
-          parameters: { max_new_tokens: 1024, temperature: 0.7 }
+          parameters: { max_new_tokens: 1024, return_full_text: false }
         })
       });
 
-      const result = await response.json();
-      let output = result[0]?.generated_text || "";
-      
-      // Sadece asistanın cevabını al (Prompt'u temizle)
-      if (output.includes("Assistant:")) {
-        output = output.split("Assistant:").pop();
+      // HTTP Hata Kontrolü (401, 429, 503 vb.)
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`[HF Sunucu Hatası ${response.status}]: ${errorText}`);
       }
 
-      const cleanOutput = this.formatResponse(output);
-      if (onChunk) onChunk(cleanOutput); // Simüle edilmiş chunk
+      const result = await response.json();
+      let output = Array.isArray(result) ? result[0]?.generated_text : result.generated_text;
       
-      return cleanOutput;
-    } catch (error) {
-      console.error("Chat Hatası:", error);
-      throw error;
+      if (!output) throw new Error("Modelden geçerli bir metin dönmedi.");
+      return output.replace(/Assistant:/g, "").trim();
+
+    } catch (error: any) {
+      // Hatayı açıkça konsola ve UI'a gönderiyoruz
+      const detailedError = `[Chat Hatası]: ${error.message || "Bağlantı kurulamadı"}`;
+      console.error(detailedError);
+      throw new Error(detailedError);
     }
   }
+
   /**
-   * Görsel Üretim Fonksiyonu
-   */
-  /**
-   * Görsel Üretim Fonksiyonu
+   * Görsel Üretim Fonksiyonu - Detaylı Hata Yakalama Eklenmiş
    */
   async generateImage(prompt: string): Promise<string> {
     const apiKey = this.getApiKey();
+    const targetUrl = `${PROXY_URL}https://api-inference.huggingface.co/models/${MODELS.IMAGE}`;
+
     try {
-      const response = await fetch(`https://api-inference.huggingface.co/models/${MODELS.IMAGE}`, {
+      const response = await fetch(targetUrl, {
         method: "POST",
-        headers: { "Authorization": `Bearer ${apiKey}` },
+        headers: { 
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
         body: JSON.stringify({ inputs: prompt })
       });
 
-      const blob = await response.blob();
-      return URL.createObjectURL(blob); // Base64 yerine blob URL döner (daha performanslı)
-    } catch (error) {
-      console.error("Görsel Hatası:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Video Üretim Fonksiyonu
-   */
-  async generateVideo(prompt: string): Promise<string> {
-    const apiKey = this.getApiKey();
-    try {
-      const response = await fetch(`https://api-inference.huggingface.co/models/${MODELS.VIDEO}`, {
-        method: "POST",
-        headers: { "Authorization": `Bearer ${apiKey}` },
-        body: JSON.stringify({ inputs: prompt })
-      });
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`[HF Görsel Hatası ${response.status}]: ${errorText}`);
+      }
 
       const blob = await response.blob();
+      if (blob.size < 100) throw new Error("Gelen veri bir görsel değil.");
+      
       return URL.createObjectURL(blob);
-    } catch (error) {
-      console.error("Video Hatası:", error);
-      throw error;
+    } catch (error: any) {
+      const detailedError = `[Görsel Hatası]: ${error.message}`;
+      console.error(detailedError);
+      throw new Error(detailedError);
     }
   }
 }
