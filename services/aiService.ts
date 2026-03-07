@@ -72,7 +72,9 @@ export class AIService {
       throw error;
     }
   }
-
+  /**
+   * Görsel Üretim Fonksiyonu
+   */
   /**
    * Görsel Üretim Fonksiyonu
    */
