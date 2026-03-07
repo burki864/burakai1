@@ -6,30 +6,26 @@ const MODELS = {
   VIDEO: "ali-vilab/modelscope-damo-text-to-video-synthesis" 
 };
 
-// En güvenli ve 404 vermeyecek ana URL
-const HF_BASE_URL = "https://api-inference.huggingface.co/models";
+// API Endpoint'leri
+const API_ENDPOINTS = {
+  CHAT: "/api/chat",
+  IMAGE: "/api/image",
+  VIDEO: "/api/video"
+};
 
 export class AIService {
-  private getApiKey(): string {
-    const apiKey = import.meta.env.VITE_HUGGINGFACE_TOKEN || import.meta.env.VITE_HUGGING_FACE_TOKEN;
-    if (!apiKey) throw new Error("API Token eksik! .env dosyasını kontrol et.");
-    return apiKey.trim();
-  }
-
   async generateText(
     prompt: string,
     history: Message[],
     settings?: SettingsState,
     onChunk?: (text: string) => void
   ): Promise<string> {
-    const apiKey = this.getApiKey();
     const fullPrompt = `User: ${prompt}\nAssistant:`;
 
     try {
-      const response = await fetch(`${HF_BASE_URL}/${MODELS.CHAT}`, {
+      const response = await fetch(API_ENDPOINTS.CHAT, {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -37,7 +33,7 @@ export class AIService {
           parameters: { 
             max_new_tokens: 1024, 
             return_full_text: false,
-            wait_for_model: true // Model yüklenene kadar bekler (503 hatasını azaltır)
+            wait_for_model: true 
           }
         })
       });
@@ -62,7 +58,37 @@ export class AIService {
     }
   }
 
-  // Görsel ve Video fonksiyonları da aynı HF_BASE_URL'i kullanmalı
+  async generateImage(prompt: string): Promise<string> {
+    try {
+      const response = await fetch(API_ENDPOINTS.IMAGE, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inputs: prompt })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    } catch (error: any) {
+      console.error("Görsel Hatası:", error);
+      throw error;
+    }
+  }
+
+  async generateVideo(prompt: string, aspectRatio?: string): Promise<string> {
+    try {
+      const response = await fetch(API_ENDPOINTS.VIDEO, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ inputs: prompt })
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    } catch (error: any) {
+      console.error("Video Hatası:", error);
+      throw error;
+    }
+  }
 }
 
 export const aiService = new AIService();

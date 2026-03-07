@@ -1,0 +1,16 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/chat",
+      "destination": "/api/chat.ts"
+    },
+    {
+      "source": "/api/image",
+      "destination": "/api/image.ts"
+    },
+    {
+      "source": "/api/video",
+      "destination": "/api/video.ts"
+    }
+  ]
+}
