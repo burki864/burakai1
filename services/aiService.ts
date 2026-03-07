@@ -1,4 +1,4 @@
-import { Message } from "../types";
+import { Message, SettingsState } from "../types";
 
 const MODELS = {
   CHAT: "Qwen/Qwen2.5-72B-Instruct", 
@@ -6,26 +6,25 @@ const MODELS = {
   VIDEO: "ali-vilab/modelscope-damo-text-to-video-synthesis" 
 };
 
-// CORS hatasını aşmak için proxy URL'si (Gerekirse başına eklenir)
-const PROXY_URL = "https://corsproxy.io/?"; 
-
 export class AIService {
   private getApiKey(): string {
     const apiKey = import.meta.env.VITE_HUGGINGFACE_TOKEN || import.meta.env.VITE_HUGGING_FACE_TOKEN;
-    if (!apiKey) throw new Error("KRİTİK HATA: VITE_HUGGINGFACE_TOKEN bulunamadı!");
+    if (!apiKey) throw new Error("API Token eksik!");
     return apiKey.trim();
   }
 
-  /**
-   * Chat Fonksiyonu - Detaylı Hata Yakalama Eklenmiş
-   */
-  async generateText(prompt: string, history: Message[]): Promise<string> {
+  async generateText(
+    prompt: string,
+    history: Message[],
+    settings?: SettingsState,
+    onChunk?: (text: string) => void
+  ): Promise<string> {
     const apiKey = this.getApiKey();
     const fullPrompt = `User: ${prompt}\nAssistant:`;
-    const targetUrl = `${PROXY_URL}https://api-inference.huggingface.co/models/${MODELS.CHAT}`;
 
     try {
-      const response = await fetch(targetUrl, {
+      // Proxy üzerinden gidiyoruz
+      const response = await fetch(`/models/${MODELS.CHAT}`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -37,35 +36,31 @@ export class AIService {
         })
       });
 
-      // HTTP Hata Kontrolü (401, 429, 503 vb.)
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`[HF Sunucu Hatası ${response.status}]: ${errorText}`);
+        const errorDetail = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorDetail}`);
       }
 
       const result = await response.json();
       let output = Array.isArray(result) ? result[0]?.generated_text : result.generated_text;
       
-      if (!output) throw new Error("Modelden geçerli bir metin dönmedi.");
-      return output.replace(/Assistant:/g, "").trim();
+      if (!output) throw new Error("Boş yanıt.");
+      const cleanOutput = output.replace(/Assistant:/g, "").trim();
+      
+      if (onChunk) onChunk(cleanOutput);
+      return cleanOutput;
 
     } catch (error: any) {
-      // Hatayı açıkça konsola ve UI'a gönderiyoruz
-      const detailedError = `[Chat Hatası]: ${error.message || "Bağlantı kurulamadı"}`;
-      console.error(detailedError);
-      throw new Error(detailedError);
+      console.error("Chat Hatası:", error);
+      // Ekranda hatayı görebilmen için hatayı fırlatıyoruz
+      throw new Error(`[Bağlantı Hatası]: ${error.message}`);
     }
   }
 
-  /**
-   * Görsel Üretim Fonksiyonu - Detaylı Hata Yakalama Eklenmiş
-   */
   async generateImage(prompt: string): Promise<string> {
     const apiKey = this.getApiKey();
-    const targetUrl = `${PROXY_URL}https://api-inference.huggingface.co/models/${MODELS.IMAGE}`;
-
     try {
-      const response = await fetch(targetUrl, {
+      const response = await fetch(`/models/${MODELS.IMAGE}`, {
         method: "POST",
         headers: { 
           "Authorization": `Bearer ${apiKey}`,
@@ -74,19 +69,35 @@ export class AIService {
         body: JSON.stringify({ inputs: prompt })
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`[HF Görsel Hatası ${response.status}]: ${errorText}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const blob = await response.blob();
-      if (blob.size < 100) throw new Error("Gelen veri bir görsel değil.");
-      
       return URL.createObjectURL(blob);
     } catch (error: any) {
-      const detailedError = `[Görsel Hatası]: ${error.message}`;
-      console.error(detailedError);
-      throw new Error(detailedError);
+      console.error("Görsel Hatası:", error);
+      throw error;
+    }
+  }
+
+  async generateVideo(prompt: string, aspectRatio?: string): Promise<string> {
+    const apiKey = this.getApiKey();
+    try {
+      const response = await fetch(`/models/${MODELS.VIDEO}`, {
+        method: "POST",
+        headers: { 
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ inputs: prompt })
+      });
+
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const blob = await response.blob();
+      return URL.createObjectURL(blob);
+    } catch (error: any) {
+      console.error("Video Hatası:", error);
+      throw error;
     }
   }
 }

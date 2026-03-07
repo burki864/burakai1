@@ -74,16 +74,24 @@ const ChatView: React.FC<ChatViewProps> = ({ chat, settings, user, onUpdateMessa
     const files = e.target.files;
     if (!files) return;
     const newAttachments: Attachment[] = [];
-    for (const file of Array.from(files)) {
+    for (const file of Array.from(files) as File[]) {
       const reader = new FileReader();
-      const att = await new Promise<Attachment>((resolve) => {
+      const att = await new Promise<Attachment>((resolve, reject) => {
         reader.onload = (ev) => {
-          const data = (ev.target?.result as string).split(',')[1];
+          const result = ev.target?.result;
+          if (typeof result !== 'string') {
+            reject(new Error("Failed to read file"));
+            return;
+          }
+          const data = result.split(',')[1];
           resolve({
             type: file.type.startsWith('image/') ? 'image' : file.type.startsWith('video/') ? 'video' : 'file',
-            data, mimeType: file.type, name: file.name
+            data, 
+            mimeType: file.type, 
+            name: file.name
           });
         };
+        reader.onerror = () => reject(new Error("File reader error"));
         reader.readAsDataURL(file);
       });
       newAttachments.push(att);

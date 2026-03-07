@@ -10,12 +10,5 @@ export default defineConfig({
   },
   server: {
     port: 3000,
-    // Optional: Proxy during local development if not using Vercel dev
-    proxy: {
-      '/api': {
-        target: 'http://localhost:3001',
-        changeOrigin: true,
-      },
-    },
   }
 });
