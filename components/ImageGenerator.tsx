@@ -1,9 +1,8 @@
-
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Download, Trash2, Wand2, Loader2, Sparkles, Image as ImageIcon } from 'lucide-react';
 import { ImageGeneration, SettingsState, User } from '../types';
-import { geminiService } from '../services/geminiService';
+import { aiService } from '../services/aiService'; // İsim düzeltildi
 import { dbService } from '../services/supabase';
 import { TRANSLATIONS } from '../constants';
 import BackgroundTheme from './BackgroundTheme';
@@ -34,16 +33,27 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
     setIsGenerating(true);
     setError(null);
     try {
-      const imageUrl = await geminiService.generateImage(prompt, aspectRatio, imageSize);
-      const newImg: ImageGeneration = { id: Date.now().toString(), prompt: prompt.trim(), url: imageUrl, timestamp: Date.now() };
+      // geminiService yerine aiService kullanıldı
+      const imageUrl = await aiService.generateImage(prompt.trim()); 
       
-      // PERSIST TO SUPABASE WITH ACTUAL USER ID
-      dbService.saveImage(user.id, prompt.trim(), imageUrl).catch(err => console.debug("Supabase media sync issue:", err));
+      const newImg: ImageGeneration = { 
+        id: Date.now().toString(), 
+        prompt: prompt.trim(), 
+        url: imageUrl, 
+        timestamp: Date.now() 
+      };
+      
+      // Supabase kaydı
+      dbService.saveImage(user.id, prompt.trim(), imageUrl)
+        .catch(err => console.debug("Supabase media sync issue:", err));
       
       onSaveImage(newImg);
       setPrompt('');
-    } catch (err: any) { setError(err.message || 'Failed to generate image.'); }
-    finally { setIsGenerating(false); }
+    } catch (err: any) { 
+      setError(err.message || 'Görsel oluşturma başarısız oldu.'); 
+    } finally { 
+      setIsGenerating(false); 
+    }
   };
 
   return (
@@ -75,7 +85,11 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
               <Sparkles size={24} />
             </div>
             <div>
-              <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight"><span className="gradient-text">{t.title}</span></h2>
+              <h2 className="text-2xl sm:text-3xl md:text-4xl font-black tracking-tight">
+                <span className="bg-gradient-to-r from-purple-400 to-pink-500 bg-clip-text text-transparent">
+                  {t.title}
+                </span>
+              </h2>
               <p className="text-slate-500 font-bold uppercase tracking-widest text-[8px] sm:text-[10px]">{t.subtitle}</p>
             </div>
           </div>
@@ -86,7 +100,7 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
                 <button 
                   key={ratio}
                   onClick={() => setAspectRatio(ratio)} 
-                  className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${aspectRatio === ratio ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${aspectRatio === ratio ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
                 >
                   {ratio}
                 </button>
@@ -97,7 +111,7 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
                 <button 
                   key={size}
                   onClick={() => setImageSize(size)} 
-                  className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${imageSize === size ? 'bg-purple-600 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                  className={`px-4 py-2 rounded-xl text-[10px] font-black transition-all ${imageSize === size ? 'bg-purple-600 text-white shadow-lg' : 'text-slate-500 hover:text-slate-300'}`}
                 >
                   {size}
                 </button>
@@ -105,7 +119,7 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
             </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row gap-3 p-2 rounded-[2rem] glass-panel border-white/10">
+          <div className="flex flex-col sm:flex-row gap-3 p-2 rounded-[2rem] glass-panel border-white/10 bg-black/20">
             <textarea 
               rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)}
               placeholder={t.placeholder}
@@ -113,13 +127,17 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
             />
             <button 
               onClick={handleGenerate} disabled={!prompt.trim() || isGenerating}
-              className={`px-10 py-4 rounded-[1.5rem] font-black flex items-center justify-center gap-3 transition-all active:scale-95 ${!prompt.trim() || isGenerating ? 'bg-slate-800 text-slate-600' : 'bg-purple-600 text-white shadow-2xl shadow-purple-600/20'}`}
+              className={`px-10 py-4 rounded-[1.5rem] font-black flex items-center justify-center gap-3 transition-all active:scale-95 ${!prompt.trim() || isGenerating ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-purple-600 text-white shadow-2xl shadow-purple-600/40 hover:bg-purple-500'}`}
             >
               {isGenerating ? <Loader2 className="animate-spin" /> : <Wand2 />}
               {isGenerating ? t.generating : t.generate}
             </button>
           </div>
-          {error && <p className="text-red-400 text-xs font-bold mt-4 animate-pulse">{error}</p>}
+          {error && (
+            <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-red-400 text-xs font-bold mt-4 flex items-center gap-2">
+              <Sparkles size={12} /> {error}
+            </motion.p>
+          )}
         </div>
       </header>
 
@@ -130,17 +148,39 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
             <p className="text-2xl font-black mb-2 tracking-tight">{t.empty}</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 pb-20">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8 pb-20">
             {images.map(img => (
-              <div key={img.id} className="group relative aspect-square rounded-[2.5rem] overflow-hidden glass-panel border border-white/10 transition-all hover:scale-[1.03] shadow-xl">
-                <img src={img.url} className="w-full h-full object-cover grayscale-[0.2] group-hover:grayscale-0 transition-all duration-700" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all p-8 flex flex-col justify-end">
+              <motion.div 
+                layout
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                key={img.id} 
+                className="group relative aspect-square rounded-[2.5rem] overflow-hidden glass-panel border border-white/10 transition-all shadow-xl"
+              >
+                <img src={img.url} className="w-full h-full object-cover transition-all duration-700 group-hover:scale-110" alt={img.prompt} />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-all p-8 flex flex-col justify-end">
+                  <p className="text-white text-xs font-medium mb-4 line-clamp-2 opacity-80">{img.prompt}</p>
                   <div className="flex items-center justify-end gap-3">
-                    <button onClick={() => window.open(img.url)} className="p-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white"><Download /></button>
-                    <button onClick={() => onDeleteImage(img.id)} className="p-4 rounded-2xl bg-red-500/20 hover:bg-red-500/40 text-red-400"><Trash2 /></button>
+                    <button 
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = img.url;
+                        link.download = `burakai-${img.id}.png`;
+                        link.click();
+                      }} 
+                      className="p-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white backdrop-blur-md transition-colors"
+                    >
+                      <Download size={20} />
+                    </button>
+                    <button 
+                      onClick={() => onDeleteImage(img.id)} 
+                      className="p-4 rounded-2xl bg-red-500/20 hover:bg-red-500/40 text-red-400 backdrop-blur-md transition-colors"
+                    >
+                      <Trash2 size={20} />
+                    </button>
                   </div>
                 </div>
-              </div>
+              </motion.div>
             ))}
           </div>
         )}
