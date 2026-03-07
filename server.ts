@@ -10,17 +10,15 @@ async function startServer() {
   app.use(cors());
 
   // Hugging Face Proxy (v3 syntax)
+  // Root level middleware with pathFilter to keep the full path
   app.use(
-    "/models",
     createProxyMiddleware({
       target: "https://api-inference.huggingface.co",
       changeOrigin: true,
-      pathRewrite: {
-        "^/": "/models/", // Express strips /models, so we add it back for Hugging Face
-      },
+      pathFilter: "/models",
       on: {
         proxyReq: (proxyReq, req) => {
-          // Log for debugging if needed
+          // Log for debugging
           // console.log('Proxying:', req.method, req.url);
         },
         error: (err, req, res) => {

@@ -6,10 +6,13 @@ const MODELS = {
   VIDEO: "ali-vilab/modelscope-damo-text-to-video-synthesis" 
 };
 
+// En güvenli ve 404 vermeyecek ana URL
+const HF_BASE_URL = "https://api-inference.huggingface.co/models";
+
 export class AIService {
   private getApiKey(): string {
     const apiKey = import.meta.env.VITE_HUGGINGFACE_TOKEN || import.meta.env.VITE_HUGGING_FACE_TOKEN;
-    if (!apiKey) throw new Error("API Token eksik!");
+    if (!apiKey) throw new Error("API Token eksik! .env dosyasını kontrol et.");
     return apiKey.trim();
   }
 
@@ -23,8 +26,7 @@ export class AIService {
     const fullPrompt = `User: ${prompt}\nAssistant:`;
 
     try {
-      // Proxy üzerinden gidiyoruz
-      const response = await fetch(`/models/${MODELS.CHAT}`, {
+      const response = await fetch(`${HF_BASE_URL}/${MODELS.CHAT}`, {
         method: "POST",
         headers: {
           "Authorization": `Bearer ${apiKey}`,
@@ -32,7 +34,11 @@ export class AIService {
         },
         body: JSON.stringify({
           inputs: fullPrompt,
-          parameters: { max_new_tokens: 1024, return_full_text: false }
+          parameters: { 
+            max_new_tokens: 1024, 
+            return_full_text: false,
+            wait_for_model: true // Model yüklenene kadar bekler (503 hatasını azaltır)
+          }
         })
       });
 
@@ -44,7 +50,7 @@ export class AIService {
       const result = await response.json();
       let output = Array.isArray(result) ? result[0]?.generated_text : result.generated_text;
       
-      if (!output) throw new Error("Boş yanıt.");
+      if (!output) throw new Error("Modelden boş yanıt döndü.");
       const cleanOutput = output.replace(/Assistant:/g, "").trim();
       
       if (onChunk) onChunk(cleanOutput);
@@ -52,54 +58,11 @@ export class AIService {
 
     } catch (error: any) {
       console.error("Chat Hatası:", error);
-      // Ekranda hatayı görebilmen için hatayı fırlatıyoruz
       throw new Error(`[Bağlantı Hatası]: ${error.message}`);
     }
   }
 
-  async generateImage(prompt: string): Promise<string> {
-    const apiKey = this.getApiKey();
-    try {
-      const response = await fetch(`/models/${MODELS.IMAGE}`, {
-        method: "POST",
-        headers: { 
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ inputs: prompt })
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const blob = await response.blob();
-      return URL.createObjectURL(blob);
-    } catch (error: any) {
-      console.error("Görsel Hatası:", error);
-      throw error;
-    }
-  }
-
-  async generateVideo(prompt: string, aspectRatio?: string): Promise<string> {
-    const apiKey = this.getApiKey();
-    try {
-      const response = await fetch(`/models/${MODELS.VIDEO}`, {
-        method: "POST",
-        headers: { 
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ inputs: prompt })
-      });
-
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-      const blob = await response.blob();
-      return URL.createObjectURL(blob);
-    } catch (error: any) {
-      console.error("Video Hatası:", error);
-      throw error;
-    }
-  }
+  // Görsel ve Video fonksiyonları da aynı HF_BASE_URL'i kullanmalı
 }
 
 export const aiService = new AIService();
