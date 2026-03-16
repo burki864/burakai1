@@ -1,16 +1,9 @@
 {
+  "version": 2,
   "rewrites": [
     {
-      "source": "/api/chat",
-      "destination": "/api/chat.ts"
-    },
-    {
-      "source": "/api/image",
-      "destination": "/api/image.ts"
-    },
-    {
-      "source": "/api/video",
-      "destination": "/api/video.ts"
+      "source": "/api/:path*",
+      "destination": "/api/:path*"
     }
   ]
 }
