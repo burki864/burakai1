@@ -3,7 +3,7 @@ import { createServer as createViteServer } from "vite";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import cors from "cors";
 import Groq from "groq-sdk";
-import { smartChatRouter } from "./lib/router";
+import { smartChatRouter } from "./lib/router.js";
 
 async function startServer() {
   const app = express();

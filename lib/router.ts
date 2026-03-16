@@ -1,4 +1,4 @@
-import { groq, CHAT_MODELS } from "./groq";
+import { groq, CHAT_MODELS } from "./groq.js";
 
 export interface RouterOptions {
   stream?: boolean;

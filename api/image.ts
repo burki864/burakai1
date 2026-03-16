@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { generateCloudflareImage } from '../lib/cloudflare';
+import { generateCloudflareImage } from '../lib/cloudflare.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {

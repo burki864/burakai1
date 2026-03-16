@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { groq, VISION_MODEL } from '../lib/groq';
+import { groq, VISION_MODEL } from '../lib/groq.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
