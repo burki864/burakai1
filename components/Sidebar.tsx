@@ -12,7 +12,9 @@ import {
   ChevronRight,
   Film,
   Zap,
-  Download
+  Download,
+  Globe,
+  Music
 } from 'lucide-react';
 import { ChatSession, User, SettingsState } from '../types';
 import { TRANSLATIONS } from '../constants';
@@ -54,11 +56,13 @@ const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      <nav className="px-4 py-2 space-y-1">
+      <nav className="px-4 py-2 space-y-1 overflow-y-auto custom-scrollbar">
         {[
-          { id: 'chat', label: t.chat, icon: <MessageSquare size={18} />, color: 'text-blue-400' },
+          { id: 'chat', label: 'Neural Chat', icon: <MessageSquare size={18} />, color: 'text-blue-400' },
           { id: 'images', label: t.images, icon: <ImageIcon size={18} />, color: 'text-purple-400' },
           { id: 'video-studio', label: t.videoStudio, icon: <Film size={18} />, color: 'text-cyan-400' },
+          { id: 'web-builder', label: t.webBuilder, icon: <Globe size={18} />, color: 'text-emerald-400' },
+          { id: 'music-studio', label: t.musicStudio, icon: <Music size={18} />, color: 'text-pink-400' },
           { id: 'settings', label: t.settings, icon: <SettingsIcon size={18} />, color: 'text-slate-400' },
           { id: 'downloads', label: t.downloads, icon: <Download size={18} />, color: 'text-emerald-400' },
         ].map((item) => (

@@ -8,12 +8,15 @@ import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import ImageGenerator from './components/ImageGenerator';
 import VideoStudio from './components/VideoStudio';
+import AIWebsiteBuilder from './components/AIWebsiteBuilder';
+import MusicStudio from './components/MusicStudio';
 import Settings from './components/Settings';
 import Downloads from './components/Downloads';
 import BannedScreen from './components/BannedScreen';
 import MouseGlow from './components/MouseGlow';
 import IntroAnimation from './components/IntroAnimation';
 import { Menu, X } from 'lucide-react';
+import { AnalysisResult } from './types';
 
 const MotionDiv = motion.div as any;
 
@@ -26,6 +29,7 @@ const App: React.FC = () => {
   const [settings, setSettings] = useState<SettingsState>(storageService.getSettings());
   const [view, setView] = useState<AppView>('chat');
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [analysisContext, setAnalysisContext] = useState<AnalysisResult[]>([]);
 
   // Hugging Face geçişi yapıldığı için API Key kontrolü kaldırıldı.
   // Uygulama her zaman "bağlı" kabul edilecek.
@@ -160,9 +164,21 @@ const App: React.FC = () => {
               transition={{ duration: 0.4, ease: "easeInOut" }}
               className="flex-1 h-full"
             >
-              {view === 'chat' && <ChatView chat={activeChat} settings={settings} user={user} onUpdateMessages={(msgs) => activeChatId && setChats(p => p.map(c => c.id === activeChatId ? { ...c, messages: msgs } : c))} onNewChat={createNewChat} />}
+              {view === 'chat' && (
+                <ChatView 
+                  chat={activeChat} 
+                  settings={settings} 
+                  user={user} 
+                  onUpdateMessages={(msgs) => activeChatId && setChats(p => p.map(c => c.id === activeChatId ? { ...c, messages: msgs } : c))} 
+                  onNewChat={createNewChat}
+                  onSaveImage={(img) => setImages(p => [img, ...p])}
+                  onSetAnalysisContext={(res) => setAnalysisContext(p => [...p, res])}
+                />
+              )}
               {view === 'images' && <ImageGenerator images={images} onSaveImage={(img) => setImages(p => [img, ...p])} onDeleteImage={(id) => setImages(p => p.filter(i => i.id !== id))} settings={settings} user={user} />}
               {view === 'video-studio' && <VideoStudio settings={settings} user={user} />}
+              {view === 'web-builder' && <AIWebsiteBuilder settings={settings} user={user} analysisContext={analysisContext} />}
+              {view === 'music-studio' && <MusicStudio settings={settings} user={user} />}
               {view === 'settings' && <Settings settings={settings} onUpdateSettings={setSettings} user={user} onLogout={handleLogout} onUpdateUser={setUser} />}
               {view === 'downloads' && <Downloads settings={settings} />}
             </MotionDiv>

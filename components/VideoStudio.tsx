@@ -33,21 +33,21 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ settings, user }) => {
     setStatus("Neural Motion Synthesis Initiated...");
 
     try {
-      // Son video üretim zamanını kaydet (Kota takibi için)
-      storageService.setLastVideoTimestamp(Date.now());
+      // aiService artık doğrudan Pollinations URL'si döndürüyor
+      const url = await aiService.generateVideo(prompt.trim());
       
-      // aiService üzerinden video üretimi
-      // Yeni parametre yapısı: (prompt, aspectRatio)
-      const url = await aiService.generateVideo(prompt.trim(), aspectRatio);
-      
+      if (!url) throw new Error("Video generation failed.");
+
+      // Pollinations video üretimi biraz zaman alabilir, 
+      // ama URL anında hazır olur. Video elementi yüklenirken bekler.
       setVideoUrl(url);
       setStatus("Synthesis Complete.");
+      setIsGenerating(false);
+
     } catch (err: any) { 
       console.error(err);
       setError(err.message || "Video sentezi başarısız oldu."); 
-    } finally { 
-      setIsGenerating(false); 
-      setStatus(""); 
+      setIsGenerating(false);
     }
   };
 
@@ -147,8 +147,8 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ settings, user }) => {
                   autoPlay 
                   loop 
                   className="w-full rounded-[2.8rem] shadow-inner"
+                  src={videoUrl}
                 >
-                  <source src={videoUrl} type="video/mp4" />
                   Tarayıcınız video oynatmayı desteklemiyor.
                 </video>
              </div>

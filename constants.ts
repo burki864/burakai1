@@ -32,6 +32,8 @@ export const TRANSLATIONS: Record<Language, any> = {
       videoStudio: 'Video Studio',
       settings: 'Parameters',
       downloads: 'Download App',
+      webBuilder: 'Web Builder',
+      musicStudio: 'Music Studio',
       history: 'History',
       newChat: 'New Link',
       proCore: 'Pro Core'
@@ -100,6 +102,8 @@ export const TRANSLATIONS: Record<Language, any> = {
       videoStudio: 'Video Stüdyosu',
       settings: 'Ayarlar',
       downloads: 'Uygulamayı İndir',
+      webBuilder: 'Web Oluşturucu',
+      musicStudio: 'Müzik Stüdyosu',
       history: 'Geçmiş',
       newChat: 'Yeni Bağlantı',
       proCore: 'Pro Çekirdek'

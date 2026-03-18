@@ -21,7 +21,13 @@ export interface User {
 }
 
 export type ThemeType = 'default' | 'rain' | 'desert' | 'nebula' | 'cyberpunk' | 'snow';
-export type AppView = 'chat' | 'images' | 'video-studio' | 'settings' | 'downloads';
+export type AppView = 'chat' | 'images' | 'video-studio' | 'settings' | 'downloads' | 'web-builder' | 'music-studio';
+
+export interface AnalysisResult {
+  type: 'vision' | 'link' | 'youtube' | 'search';
+  data: any;
+  timestamp: number;
+}
 
 export enum Personality {
   Normal = 'normal',

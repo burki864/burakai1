@@ -32,10 +32,13 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
     setError(null);
 
     try {
+      // Backend'den URL veya Base64 geliyor
       const imageUrl = await aiService.generateImage(prompt.trim());
       
+      if (!imageUrl) throw new Error("Görsel oluşturulamadı.");
+
       const newImage: ImageGeneration = {
-        id: Date.now().toString(),
+        id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
         url: imageUrl,
         prompt: prompt.trim(),
         timestamp: Date.now()
@@ -44,7 +47,7 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
       onSaveImage(newImage);
       setPrompt('');
     } catch (err: any) {
-      console.error(err);
+      console.error("Üretim Hatası:", err);
       setError(err.message || "Görsel üretimi başarısız oldu.");
     } finally {
       setIsGenerating(false);
@@ -57,7 +60,6 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* LOCAL THEME OVERLAY */}
       <div className="absolute inset-0 pointer-events-none z-[1] overflow-hidden">
         <AnimatePresence>
           {isHovered && (
@@ -95,6 +97,7 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
               rows={2} 
               value={prompt} 
               onChange={(e) => setPrompt(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleGenerate(); } }}
               placeholder={t.placeholder}
               className="flex-1 bg-transparent border-none focus:ring-0 p-5 text-white font-medium resize-none text-lg md:text-xl outline-none"
             />
@@ -131,24 +134,43 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
               layout
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="group relative glass-panel border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl aspect-square"
+              className="group relative glass-panel border-white/10 rounded-[2.5rem] overflow-hidden shadow-2xl aspect-square bg-slate-900"
             >
               <img 
                 src={img.url} 
                 alt={img.prompt} 
                 className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
                 referrerPolicy="no-referrer"
+                loading="lazy"
+                onError={(e) => {
+                  const target = e.currentTarget;
+                  
+                  // EĞER ZATEN YEDEK DENENMİŞSE DUR (Sonsuz döngüyü kıran nokta)
+                  if (target.getAttribute('data-fallback-tried') === 'true') {
+                    target.src = "https://via.placeholder.com/512?text=Gorsel+Yuklenemedi";
+                    target.onerror = null; 
+                    return;
+                  }
+
+                  console.warn("Görsel yüklenemedi, tek seferlik yedek deneniyor:", img.id);
+                  target.setAttribute('data-fallback-tried', 'true');
+                  
+                  // Karakterleri temizle ve güvenli Pollinations linki oluştur
+                  const cleanPrompt = img.prompt.replace(/[\r\n]+/gm, " ").trim();
+                  target.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=512&height=512&seed=${Math.floor(Math.random() * 1000)}&nologo=true`;
+                }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col justify-end p-8">
                 <p className="text-white font-bold text-sm line-clamp-2 mb-6">{img.prompt}</p>
                 <div className="flex gap-3">
                   <a 
                     href={img.url} 
-                    download={`burakai-${img.id}.png`}
+                    target="_blank"
+                    rel="noopener noreferrer"
                     className="flex-1 py-3 rounded-xl bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/10 flex items-center justify-center gap-2 text-white text-[10px] font-black uppercase tracking-widest transition-all"
                   >
                     <Download size={14} />
-                    {settings.language === 'tr' ? 'İndir' : 'Download'}
+                    {settings.language === 'tr' ? 'Görüntüle' : 'View'}
                   </a>
                   <button 
                     onClick={() => onDeleteImage(img.id)}
