@@ -56,8 +56,9 @@ export interface Message {
   groundingUrls?: { title: string; uri: string }[];
   videoUrl?: string;
   imageUrl?: string;
+  audioUrl?: string;
   isGenerating?: boolean;
-  generationType?: 'image' | 'video';
+  generationType?: 'image' | 'video' | 'music' | 'website';
 }
 
 export interface ChatSession {

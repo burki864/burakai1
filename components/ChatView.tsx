@@ -248,6 +248,60 @@ const ChatView: React.FC<ChatViewProps> = ({
       }
 
       if (responseText) {
+        // Parse for generation commands [GENERATE: TYPE, PROMPT]
+        const genMatch = responseText.match(/\[GENERATE:\s*(\w+),\s*(.*?)\]/i);
+        
+        if (genMatch) {
+          const type = genMatch[1].toUpperCase();
+          const prompt = genMatch[2];
+          
+          if (type === 'IMAGE') {
+            const url = await aiService.generateImage(prompt);
+            onUpdateMessages([...newMessages, { 
+              ...assistantMsg, 
+              content: responseText.replace(genMatch[0], ''), 
+              imageUrl: url 
+            }]);
+            return;
+          }
+          
+          if (type === 'VIDEO') {
+            const url = await aiService.generateVideo(prompt);
+            onUpdateMessages([...newMessages, { 
+              ...assistantMsg, 
+              content: responseText.replace(genMatch[0], ''), 
+              videoUrl: url 
+            }]);
+            return;
+          }
+
+          if (type === 'MUSIC') {
+            const response = await fetch('/api/generate-music', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt })
+            });
+            const data = await response.json();
+            onUpdateMessages([...newMessages, { 
+              ...assistantMsg, 
+              content: responseText.replace(genMatch[0], ''), 
+              audioUrl: data.url 
+            }]);
+            return;
+          }
+
+          if (type === 'WEBSITE') {
+            window.dispatchEvent(new CustomEvent('generate-website-section', { 
+              detail: { type: 'General', prompt } 
+            }));
+            onUpdateMessages([...newMessages, { 
+              ...assistantMsg, 
+              content: responseText.replace(genMatch[0], '') + "\n\n🚀 **Web Builder** modülüne bir bölüm eklendi! Sol menüden kontrol edebilirsiniz.", 
+            }]);
+            return;
+          }
+        }
+
         onUpdateMessages([...newMessages, { 
           ...assistantMsg,
           content: responseText, 
@@ -359,6 +413,16 @@ const ChatView: React.FC<ChatViewProps> = ({
                 />
               )}
               {msg.videoUrl && <video controls className="max-w-xl w-full rounded-3xl shadow-2xl"><source src={msg.videoUrl} /></video>}
+              {msg.audioUrl && (
+                <div className="w-full max-w-md p-4 glass-panel rounded-2xl border border-white/10 flex items-center gap-4">
+                  <div className="w-12 h-12 rounded-full bg-blue-600/20 flex items-center justify-center text-blue-400">
+                    <Music size={24} />
+                  </div>
+                  <audio controls className="flex-1 h-8 accent-blue-600">
+                    <source src={msg.audioUrl} type="audio/mpeg" />
+                  </audio>
+                </div>
+              )}
 
               {msg.content && (
                 <div className={`p-5 md:p-8 rounded-[2rem] text-sm md:text-xl font-medium shadow-xl leading-relaxed max-w-[90%] ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'glass-panel text-slate-100 rounded-tl-none'}`}>

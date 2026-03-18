@@ -1,5 +1,5 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Globe, 
@@ -16,7 +16,8 @@ import {
   Sparkles,
   ChevronRight,
   ExternalLink,
-  Zap
+  Zap,
+  Plus
 } from 'lucide-react';
 import { SettingsState, User, AnalysisResult } from '../types';
 import { TRANSLATIONS } from '../constants';
@@ -35,9 +36,98 @@ const AIWebsiteBuilder: React.FC<AIWebsiteBuilderProps> = ({ settings, user, ana
   const [previewMode, setPreviewMode] = useState<'desktop' | 'tablet' | 'mobile'>('desktop');
   const [activeTab, setActiveTab] = useState<'preview' | 'code'>('preview');
   
+  const [sections, setSections] = useState<{ id: string; code: string; type: string }[]>([]);
+  const [isAddingSection, setIsAddingSection] = useState(false);
+  
   const [designStyle, setDesignStyle] = useState<'modern' | 'minimal' | 'glass' | 'dark'>('modern');
   
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
+  const [remoteTrigger, setRemoteTrigger] = useState<{ type: string; prompt: string } | null>(null);
+
+  const generateFullHtml = (content: string) => {
+    return `
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>BurakAI Generated Site</title>
+        <script src="https://cdn.tailwindcss.com"></script>
+        <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+        <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+        <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+        <script src="https://unpkg.com/lucide@latest"></script>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&family=Outfit:wght@300;400;600;900&display=swap');
+          body { font-family: 'Outfit', 'Inter', sans-serif; overflow-x: hidden; }
+          .glass { backdrop-filter: blur(16px); background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); }
+          [x-cloak] { display: none !important; }
+        </style>
+      </head>
+      <body x-data="{ isMenuOpen: false, cartCount: 0 }" class="bg-[#030712] text-white">
+        ${content}
+        <script>
+          AOS.init({ duration: 1000, once: true });
+          lucide.createIcons();
+        </script>
+      </body>
+      </html>
+    `;
+  };
+
+  const handleAddSection = async (type: string = 'General') => {
+    if (!prompt.trim() && !remoteTrigger?.prompt) return;
+    if (isAddingSection) return;
+
+    setIsAddingSection(true);
+    setError(null);
+
+    try {
+      const p = remoteTrigger?.prompt || prompt.trim();
+      const response = await fetch('/api/generate-section', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: p, type, style: designStyle }),
+      });
+
+      if (!response.ok) throw new Error('Failed to generate section');
+
+      const data = await response.json();
+      const newSection = {
+        id: Math.random().toString(36).substr(2, 9),
+        code: data.code,
+        type
+      };
+      
+      const updatedSections = [...sections, newSection];
+      setSections(updatedSections);
+      
+      // Update the full code preview
+      const combinedHtml = updatedSections.map(s => s.code).join('\n');
+      setGeneratedCode(generateFullHtml(combinedHtml));
+      setPrompt(''); // Clear prompt after adding
+    } catch (err: any) {
+      setError(err.message || 'An error occurred');
+    } finally {
+      setIsAddingSection(false);
+    }
+  };
+
+  useEffect(() => {
+    const handleRemoteSection = (e: any) => {
+      setRemoteTrigger(e.detail);
+    };
+    window.addEventListener('generate-website-section', handleRemoteSection);
+    return () => window.removeEventListener('generate-website-section', handleRemoteSection);
+  }, []);
+
+  useEffect(() => {
+    if (remoteTrigger) {
+      handleAddSection(remoteTrigger.type);
+      setRemoteTrigger(null);
+    }
+  }, [remoteTrigger]);
 
   const handleGenerate = async () => {
     if (!prompt.trim() || isGenerating) return;
@@ -45,6 +135,7 @@ const AIWebsiteBuilder: React.FC<AIWebsiteBuilderProps> = ({ settings, user, ana
     setIsGenerating(true);
     setError(null);
     setGeneratedCode(null);
+    setSections([]); // Reset sections when generating full site
 
     try {
       // Analiz bağlamını ve tasarım stilini prompt'a ekle
@@ -68,7 +159,7 @@ const AIWebsiteBuilder: React.FC<AIWebsiteBuilderProps> = ({ settings, user, ana
       }
 
       const data = await response.json();
-      setGeneratedCode(data.code);
+      setGeneratedCode(generateFullHtml(data.code));
       setActiveTab('preview');
     } catch (err: any) {
       console.error('Website Generation Error:', err);
@@ -189,14 +280,40 @@ const AIWebsiteBuilder: React.FC<AIWebsiteBuilderProps> = ({ settings, user, ana
               placeholder="e.g. A modern landing page for a coffee shop with a dark theme and vibrant orange accents..."
               className="w-full h-40 bg-white/5 border border-white/10 rounded-2xl p-4 text-sm font-medium focus:ring-2 focus:ring-emerald-500/50 outline-none resize-none transition-all"
             />
-            <button 
-              onClick={handleGenerate}
-              disabled={!prompt.trim() || isGenerating}
-              className={`w-full py-4 rounded-2xl font-black flex items-center justify-center gap-3 transition-all shadow-xl ${!prompt.trim() || isGenerating ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-emerald-600 text-white shadow-emerald-600/40 hover:bg-emerald-500 active:scale-95'}`}
-            >
-              {isGenerating ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} />}
-              {isGenerating ? 'Generating...' : 'Generate Site'}
-            </button>
+            <div className="grid grid-cols-2 gap-2">
+              <button 
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || isGenerating}
+                className={`col-span-2 py-4 rounded-2xl font-black flex items-center justify-center gap-3 transition-all shadow-xl ${!prompt.trim() || isGenerating ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-emerald-600 text-white shadow-emerald-600/40 hover:bg-emerald-500 active:scale-95'}`}
+              >
+                {isGenerating ? <Loader2 className="animate-spin" size={20} /> : <Sparkles size={20} />}
+                {isGenerating ? 'Generating Full Site...' : 'Full Site Build'}
+              </button>
+              
+              <div className="col-span-2 pt-4 border-t border-white/5">
+                <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 block">Add Section</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Hero', type: 'Hero' },
+                    { label: 'Features', type: 'Features' },
+                    { label: 'Pricing', type: 'Pricing' },
+                    { label: 'Team', type: 'Team' },
+                    { label: 'Contact', type: 'Contact' },
+                    { label: 'Footer', type: 'Footer' }
+                  ].map((item) => (
+                    <button
+                      key={item.type}
+                      onClick={() => handleAddSection(item.type)}
+                      disabled={!prompt.trim() || isAddingSection}
+                      className={`py-2 px-3 rounded-xl text-[10px] font-bold uppercase tracking-wider transition-all border border-white/10 bg-white/5 text-slate-400 hover:bg-white/10 hover:text-white flex items-center justify-center gap-2 ${isAddingSection ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    >
+                      {isAddingSection ? <Loader2 size={12} className="animate-spin" /> : <Plus size={12} />}
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
 
           {error && (
@@ -244,6 +361,50 @@ const AIWebsiteBuilder: React.FC<AIWebsiteBuilderProps> = ({ settings, user, ana
               ))}
             </div>
           </div>
+
+          {sections.length > 0 && (
+            <div className="space-y-4 pt-6 border-t border-white/5">
+              <div className="flex items-center justify-between">
+                <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Sections ({sections.length})</h4>
+                <button 
+                  onClick={() => {
+                    setSections([]);
+                    setGeneratedCode(null);
+                  }}
+                  className="text-[10px] font-bold text-red-400 uppercase tracking-widest hover:text-red-300"
+                >
+                  Clear All
+                </button>
+              </div>
+              <div className="space-y-2">
+                {sections.map((section, index) => (
+                  <div 
+                    key={section.id}
+                    className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 group"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="text-[10px] font-black text-slate-600">{index + 1}</span>
+                      <span className="text-[11px] font-bold text-slate-300">{section.type}</span>
+                    </div>
+                    <button 
+                      onClick={() => {
+                        const newSections = sections.filter(s => s.id !== section.id);
+                        setSections(newSections);
+                        if (newSections.length > 0) {
+                          setGeneratedCode(generateFullHtml(newSections.map(s => s.code).join('\n')));
+                        } else {
+                          setGeneratedCode(null);
+                        }
+                      }}
+                      className="text-slate-500 hover:text-red-400 transition-colors"
+                    >
+                      <Plus size={14} className="rotate-45" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Preview Panel */}

@@ -1,7 +1,7 @@
 
 import React from 'react';
 
-const GenerationAnimation: React.FC<{ type: 'image' | 'video' }> = ({ type }) => {
+const GenerationAnimation: React.FC<{ type: 'image' | 'video' | 'music' | 'website' }> = ({ type }) => {
   return (
     <div className="relative w-full aspect-square max-w-[280px] md:max-w-[400px] rounded-[2rem] md:rounded-[3rem] overflow-hidden glass-panel flex items-center justify-center border border-white/10 group shadow-2xl">
       {/* Liquid Paint Mixing Layers */}

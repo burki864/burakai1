@@ -3,11 +3,15 @@ import { createServer as createViteServer } from "vite";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import cors from "cors";
 import axios from "axios";
+import { GoogleGenAI } from "@google/genai";
 import { groq, MODELS } from "./lib/groq.js";
 import { smartChatRouter } from "./lib/router.js";
 
 // In-memory store for async requests (Polling logic)
 const asyncRequests = new Map<string, { status: string; url?: string; error?: string; duration?: string }>();
+
+// Initialize Gemini for Website Builder
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
 async function startServer() {
   const app = express();
@@ -36,17 +40,33 @@ async function startServer() {
   app.post("/api/chat", async (req, res) => {
     const { messages, inputs, stream = false } = req.body;
     
-    let chatMessages = messages;
-    if (!chatMessages || chatMessages.length === 0) {
-      if (inputs) {
-        chatMessages = [{ role: "user", content: inputs }];
-      } else {
-        return res.status(400).json({ error: "No messages provided" });
-      }
+    let chatMessages = messages || [];
+    if (chatMessages.length === 0 && inputs) {
+      chatMessages = [{ role: "user", content: inputs }];
     }
 
+    const systemPrompt = {
+      role: "system",
+      content: `You are BurakAI Master Architect. You are a helpful AI assistant that can also trigger media generation.
+      
+      When a user asks to create something, you MUST include a generation command in your response in the format:
+      [GENERATE: TYPE, PROMPT]
+      
+      Available Types:
+      - IMAGE: For images (e.g., [GENERATE: IMAGE, a futuristic city])
+      - VIDEO: For videos (e.g., [GENERATE: VIDEO, ocean waves at sunset])
+      - MUSIC: For music/audio (e.g., [GENERATE: MUSIC, lo-fi hip hop beats])
+      - WEBSITE: For website sections (e.g., [GENERATE: WEBSITE, a hero section for a gym])
+      
+      You can still talk normally, but always include the command if generation is requested.
+      Example: "Sure! I'll generate that image for you. [GENERATE: IMAGE, a red dragon]"
+      `
+    };
+
+    const finalMessages = [systemPrompt, ...chatMessages];
+
     try {
-      const result: any = await smartChatRouter(chatMessages, { stream });
+      const result: any = await smartChatRouter(finalMessages, { stream });
 
       if (stream) {
         res.setHeader('Content-Type', 'text/event-stream');
@@ -113,6 +133,44 @@ async function startServer() {
     } catch (error: any) {
       console.error("Image Generation Error:", error.message);
       res.status(500).json({ error: error.message || "Internal Server Error" });
+    }
+  });
+
+  // AI Website Builder - Section Generation
+  app.post("/api/generate-section", async (req, res) => {
+    try {
+      const { prompt, type, style = 'Modern' } = req.body;
+      
+      const systemPrompt = `
+        You are "B-uilder Section Architect", an AI that builds premium website sections using Tailwind CSS, Alpine.js, and AOS.
+        
+        ### 🧠 SECTION RULES:
+        1. Return ONLY the HTML code for the section (no <html>, <head>, or <body> tags).
+        2. Use Tailwind CSS for all styling.
+        3. Use Lucide-React icons (represented as <i data-lucide="icon-name"></i>).
+        4. Use Alpine.js for any simple interactivity (dropdowns, tabs, etc.).
+        5. Use AOS (Animate On Scroll) attributes for animations (e.g., data-aos="fade-up").
+        6. Use high-quality placeholder images from Unsplash.
+        7. The section should be modern, clean, and premium (2026 design trends).
+        8. Ensure the section is self-contained and works within a flex/grid layout.
+        
+        SECTION TYPE: ${type || 'General'}
+        STYLE: ${style}
+        USER REQUEST: ${prompt}
+        
+        Output format: Just the HTML string.
+      `;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.1-flash-lite-preview",
+        contents: [{ parts: [{ text: systemPrompt }] }],
+      });
+
+      const code = response.text?.replace(/```html|```/g, '').trim();
+      res.json({ code });
+    } catch (error: any) {
+      console.error('Section Generation Error:', error);
+      res.status(500).json({ error: error.message });
     }
   });
 
