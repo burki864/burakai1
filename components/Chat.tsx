@@ -77,16 +77,26 @@ export const Chat: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('/api/chat', {
+      // 🚀 BACKEND'SİZ DİREKT CHAT ÇÖZÜMÜ
+      // Vercel /api/chat yerine doğrudan Pollinations API kullanıyoruz
+      const response = await fetch('https://text.pollinations.ai/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [...messages, userMsg],
+          messages: [
+            { 
+              role: 'system', 
+              content: 'Sen BurakAI adında, 13 yaşındaki dahi yazılımcı Burak Eren Kısa tarafından geliştirilmiş, nazik ve çok zeki bir yapay zeka asistanısın. React, Tailwind ve oyun geliştirme konularında uzmansın.' 
+            },
+            ...messages, 
+            userMsg
+          ],
+          model: 'openai', // Diğer seçenekler: 'mistral', 'p1'
           stream: true
         })
       });
 
-      if (!response.ok) throw new Error('Failed to fetch');
+      if (!response.ok) throw new Error('API Bağlantı Hatası');
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -94,34 +104,31 @@ export const Chat: React.FC = () => {
 
       setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
-      while (true) {
-        const { done, value } = await reader!.read();
-        if (done) break;
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
 
-        const chunk = decoder.decode(value);
-        const lines = chunk.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') break;
-            try {
-              const parsed = JSON.parse(data);
-              assistantMsg += parsed.content;
-              setMessages(prev => {
-                const newMsgs = [...prev];
-                newMsgs[newMsgs.length - 1].content = assistantMsg;
-                return newMsgs;
-              });
-            } catch (e) {
-              console.error("Error parsing chunk", e);
+          const chunk = decoder.decode(value, { stream: true });
+          // Pollinations bazen direkt text bazen JSON chunk gönderir
+          // En güvenli yöntem gelen parçayı direkt eklemektir
+          assistantMsg += chunk;
+
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            if (newMsgs.length > 0) {
+              newMsgs[newMsgs.length - 1].content = assistantMsg;
             }
-          }
+            return [...newMsgs];
+          });
         }
       }
     } catch (error) {
-      console.error(error);
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Üzgünüm, bir hata oluştu.' }]);
+      console.error("Chat Error:", error);
+      setMessages(prev => [...prev, { 
+        role: 'assistant', 
+        content: 'Bağlantı kurulamadı. Lütfen internetini kontrol et veya biraz sonra tekrar dene.' 
+      }]);
     } finally {
       setIsLoading(false);
     }
@@ -134,11 +141,21 @@ export const Chat: React.FC = () => {
         <div className="p-2 bg-emerald-500/10 rounded-lg">
           <Bot className="w-5 h-5 text-emerald-500" />
         </div>
-        <h2 className="font-bold text-zinc-100 tracking-tight">BurakAI Chat</h2>
+        <div className="flex flex-col">
+          <h2 className="font-bold text-zinc-100 tracking-tight leading-none">BurakAI Chat</h2>
+          <span className="text-[10px] text-emerald-500 font-bold uppercase mt-1 tracking-widest">Online & Ready</span>
+        </div>
       </div>
 
       {/* Chat Area */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-6 space-y-6 scroll-smooth custom-scrollbar">
+        {messages.length === 0 && (
+          <div className="h-full flex flex-col items-center justify-center opacity-20 pointer-events-none">
+            <Bot size={80} className="mb-4 text-emerald-500" />
+            <p className="text-xl font-black uppercase tracking-[0.3em]">Sistem Çevrimiçi</p>
+          </div>
+        )}
+        
         <AnimatePresence initial={false}>
           {messages.map((msg, i) => (
             <motion.div
@@ -148,13 +165,13 @@ export const Chat: React.FC = () => {
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               <div className={`flex gap-3 max-w-[90%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 shadow-lg ${
                   msg.role === 'user' ? 'bg-emerald-600' : 'bg-zinc-800 border border-zinc-700'
                 }`}>
                   {msg.role === 'user' ? <User className="w-4 h-4 text-white" /> : <Bot className="w-4 h-4 text-emerald-500" />}
                 </div>
                 
-                <div className={`p-4 rounded-2xl text-sm leading-relaxed ${
+                <div className={`p-4 rounded-2xl text-sm leading-relaxed shadow-xl ${
                   msg.role === 'user' 
                     ? 'bg-emerald-600/10 text-emerald-50 border border-emerald-500/20 rounded-tr-none' 
                     : 'bg-zinc-900 text-zinc-200 border border-zinc-800 rounded-tl-none'
@@ -163,18 +180,13 @@ export const Chat: React.FC = () => {
                     components={{
                       code({ node, className, children, ...props }: any) {
                         const match = /language-(\w+)/.exec(className || '');
-                        
-                        if (match) {
-                          return (
-                            <CodeBlock
-                              language={match[1]}
-                              value={String(children).replace(/\n$/, '')}
-                              {...props}
-                            />
-                          );
-                        }
-
-                        return (
+                        return match ? (
+                          <CodeBlock
+                            language={match[1]}
+                            value={String(children).replace(/\n$/, '')}
+                            {...props}
+                          />
+                        ) : (
                           <code className="bg-zinc-800 text-emerald-400 px-1.5 py-0.5 rounded text-xs font-mono" {...props}>
                             {children}
                           </code>
@@ -195,7 +207,7 @@ export const Chat: React.FC = () => {
             <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700">
               <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
             </div>
-            <span className="text-xs text-zinc-500 animate-pulse">Düşünüyor...</span>
+            <span className="text-xs text-zinc-500 font-bold uppercase tracking-widest animate-pulse">Sinyal İşleniyor...</span>
           </motion.div>
         )}
       </div>
@@ -212,7 +224,7 @@ export const Chat: React.FC = () => {
                 handleSend();
               }
             }}
-            placeholder="Mesajınızı yazın..."
+            placeholder="Algoritmik bir soru sor veya sohbet et..."
             className="w-full bg-zinc-950 text-zinc-100 rounded-xl p-4 pr-14 border border-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-all resize-none min-h-[56px] max-h-40"
             rows={1}
           />

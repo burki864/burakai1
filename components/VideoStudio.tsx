@@ -1,11 +1,10 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Video as VideoIcon, Wand2, Loader2, Sparkles, AlertCircle } from 'lucide-react';
+import { Video as VideoIcon, Wand2, Loader2, Sparkles, AlertCircle, Download } from 'lucide-react';
 import { SettingsState, User } from '../types';
 import GenerationAnimation from './GenerationAnimation';
 import { TRANSLATIONS } from '../constants';
-import { storageService } from '../services/storageService';
-import { aiService } from '../services/aiService'; // Import düzeltildi
+// aiService ve storageService'i doğrudan URL kullandığımız için devre dışı bırakabiliriz veya importu tutabiliriz
 import BackgroundTheme from './BackgroundTheme';
 
 interface VideoStudioProps {
@@ -33,20 +32,25 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ settings, user }) => {
     setStatus("Neural Motion Synthesis Initiated...");
 
     try {
-      // aiService artık doğrudan Pollinations URL'si döndürüyor
-      const url = await aiService.generateVideo(prompt.trim());
+      // 🚀 BACKEND'SİZ DİREKT VİDEO ÇÖZÜMÜ
+      // video.pollinations.ai bazen DNS hatası verir, bu yüzden ana domaini kullanıyoruz.
+      const seed = Math.floor(Math.random() * 1000000);
+      const cleanPrompt = prompt.trim().replace(/[\r\n]+/gm, " ");
       
-      if (!url) throw new Error("Video generation failed.");
+      // Pollinations Video API URL (Direct Link)
+      // Not: Bu URL bir MP4 dosyası üretir. 
+      const url = `https://pollinations.ai/p/${encodeURIComponent(cleanPrompt)}?model=video&seed=${seed}&width=${aspectRatio === '16:9' ? 1280 : 720}&height=${aspectRatio === '16:9' ? 720 : 1280}`;
+      
+      // Kullanıcıya üretim hissi vermek için kısa bir yapay bekleme
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
-      // Pollinations video üretimi biraz zaman alabilir, 
-      // ama URL anında hazır olur. Video elementi yüklenirken bekler.
       setVideoUrl(url);
       setStatus("Synthesis Complete.");
       setIsGenerating(false);
 
     } catch (err: any) { 
-      console.error(err);
-      setError(err.message || "Video sentezi başarısız oldu."); 
+      console.error("Video Hatası:", err);
+      setError("Video sentezi sırasında bir sorun oluştu. Lütfen tekrar deneyin."); 
       setIsGenerating(false);
     }
   };
@@ -57,7 +61,6 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ settings, user }) => {
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      {/* LOCAL THEME OVERLAY */}
       <div className="absolute inset-0 pointer-events-none z-[1] overflow-hidden">
         <AnimatePresence>
           {isHovered && (
@@ -104,8 +107,10 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ settings, user }) => {
 
           <div className="flex flex-col md:flex-row gap-3 p-2 rounded-[2.5rem] glass-panel border-white/10 bg-black/20">
             <textarea 
-              rows={2} value={prompt} onChange={(e) => setPrompt(e.target.value)}
-              placeholder="Hayalindeki sahneyi betimle..."
+              rows={2} 
+              value={prompt} 
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="Hayalindeki sahneyi betimle (İngilizce daha iyi sonuç verir)..."
               className="flex-1 bg-transparent border-none focus:ring-0 p-5 text-white font-medium resize-none text-lg md:text-xl outline-none"
             />
             <button 
@@ -132,7 +137,7 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ settings, user }) => {
             <GenerationAnimation type="video" />
             <div className="text-center space-y-2">
               <p className="text-indigo-400 font-black text-sm uppercase tracking-[0.4em] animate-pulse">{status}</p>
-              <p className="text-slate-500 text-[10px] font-bold">Bu işlem 30-60 saniye sürebilir</p>
+              <p className="text-slate-500 text-[10px] font-bold">İlk üretim 10-20 saniye sürebilir, lütfen bekleyin...</p>
             </div>
           </div>
         ) : videoUrl ? (
@@ -146,20 +151,21 @@ const VideoStudio: React.FC<VideoStudioProps> = ({ settings, user }) => {
                   controls 
                   autoPlay 
                   loop 
-                  className="w-full rounded-[2.8rem] shadow-inner"
+                  className={`w-full rounded-[2.8rem] shadow-inner ${aspectRatio === '9:16' ? 'max-h-[70vh] w-auto mx-auto' : ''}`}
                   src={videoUrl}
+                  onError={() => setError("Video yüklenirken hata oluştu. API yoğun olabilir.")}
                 >
                   Tarayıcınız video oynatmayı desteklemiyor.
                 </video>
              </div>
-             {/* Download Button Overlay */}
-             <div className="absolute top-6 right-6 z-20 opacity-0 group-hover:opacity-100 transition-opacity">
+             <div className="absolute top-6 right-6 z-20 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
                 <a 
                   href={videoUrl} 
-                  download="burakai-video.mp4" 
-                  className="p-4 rounded-full bg-black/50 backdrop-blur-xl text-white hover:bg-indigo-600 transition-colors block"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="p-4 rounded-full bg-black/50 backdrop-blur-xl text-white hover:bg-indigo-600 transition-colors block shadow-xl"
                 >
-                  <Sparkles size={20} />
+                  <Download size={20} />
                 </a>
              </div>
           </motion.div>

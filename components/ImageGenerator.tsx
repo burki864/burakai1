@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Image as ImageIcon, Wand2, Loader2, Download, Trash2, Sparkles, AlertCircle } from 'lucide-react';
 import { ImageGeneration, SettingsState, User } from '../types';
 import { TRANSLATIONS } from '../constants';
-import { aiService } from '../services/aiService';
+// aiService'i artık kullanmıyoruz çünkü direkt link oluşturacağız
 import GenerationAnimation from './GenerationAnimation';
 import BackgroundTheme from './BackgroundTheme';
 
@@ -32,17 +32,23 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
     setError(null);
 
     try {
-      // Backend'den URL veya Base64 geliyor
-      const imageUrl = await aiService.generateImage(prompt.trim());
+      // 🚀 BACKEND'SİZ DİREKT GÖRSEL ÇÖZÜMÜ
+      const seed = Math.floor(Math.random() * 1000000);
+      const cleanPrompt = prompt.trim().replace(/[\r\n]+/gm, " ");
       
-      if (!imageUrl) throw new Error("Görsel oluşturulamadı.");
-
+      // En kaliteli Flux modelini kullanan direkt Pollinations linki
+      // width/height 1024 yaparsak çok daha profesyonel durur
+      const imageUrl = `https://pollinations.ai/p/${encodeURIComponent(cleanPrompt)}?width=1024&height=1024&seed=${seed}&model=flux&nologo=true`;
+      
       const newImage: ImageGeneration = {
-        id: `img-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        id: `img-${Date.now()}-${seed}`,
         url: imageUrl,
-        prompt: prompt.trim(),
+        prompt: cleanPrompt,
         timestamp: Date.now()
       };
+
+      // Yapay bir bekleme ekleyerek "üretiliyor" havası veriyoruz (Kullanıcı deneyimi için)
+      await new Promise(resolve => setTimeout(resolve, 2000));
 
       onSaveImage(newImage);
       setPrompt('');
@@ -144,20 +150,17 @@ const ImageGenerator: React.FC<ImageGeneratorProps> = ({
                 loading="lazy"
                 onError={(e) => {
                   const target = e.currentTarget;
-                  
-                  // EĞER ZATEN YEDEK DENENMİŞSE DUR (Sonsuz döngüyü kıran nokta)
                   if (target.getAttribute('data-fallback-tried') === 'true') {
-                    target.src = "https://via.placeholder.com/512?text=Gorsel+Yuklenemedi";
+                    // Eğer yerleşik placeholder servisi de çökerse via.placeholder'a dön
+                    target.src = "https://via.placeholder.com/1024?text=Gorsel+Yuklenemedi";
                     target.onerror = null; 
                     return;
                   }
 
-                  console.warn("Görsel yüklenemedi, tek seferlik yedek deneniyor:", img.id);
                   target.setAttribute('data-fallback-tried', 'true');
-                  
-                  // Karakterleri temizle ve güvenli Pollinations linki oluştur
                   const cleanPrompt = img.prompt.replace(/[\r\n]+/gm, " ").trim();
-                  target.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=512&height=512&seed=${Math.floor(Math.random() * 1000)}&nologo=true`;
+                  // Hata durumunda Pollinations'ın alternatif resim endpoint'ini dene
+                  target.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(cleanPrompt)}?width=1024&height=1024&seed=${Math.floor(Math.random() * 1000)}&nologo=true`;
                 }}
               />
               <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-500 flex flex-col justify-end p-8">

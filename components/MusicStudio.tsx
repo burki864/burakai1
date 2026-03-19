@@ -38,46 +38,34 @@ const MusicStudio: React.FC<MusicStudioProps> = ({ settings, user }) => {
     setStatus('Neural Audio Synthesis Initiated...');
 
     try {
-      // Doğrudan backend'e istek atıyoruz
-      const response = await fetch('/api/generate-music', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({ prompt: prompt.trim() }),
-      });
-
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(errData.error || `Sunucu hatası: ${response.status}`);
-      }
-
-      const data = await response.json();
+      // 🚀 BACKEND'SİZ DİREKT API ÇÖZÜMÜ
+      // Rastgele bir seed oluşturarak her seferinde farklı müzik gelmesini sağlıyoruz
+      const seed = Math.floor(Math.random() * 1000000);
       
-      // Polling dosyan olmadığı için doğrudan 'url' bekliyoruz
-      if (data.url) {
-        const newTrack: GeneratedTrack = {
-          id: data.requestId || `m-${Date.now()}`,
-          prompt: prompt.trim(),
-          url: data.url,
-          timestamp: Date.now(),
-          duration: data.duration || '0:30'
-        };
-        
-        setTracks(prev => [newTrack, ...prev]);
-        setPrompt('');
-        setStatus('Synthesis Complete.');
-      } else {
-        throw new Error("API'den müzik adresi alınamadı.");
-      }
+      // Pollinations AI Audio API URL'i (Status dosyası gerektirmez, direkt çalışır)
+      const audioUrl = `https://pollinations.ai/p/${encodeURIComponent(prompt.trim())}?model=audio&seed=${seed}`;
+
+      // Sunucuya gitmek yerine (404 hatasını önlemek için) direkt linki objeye ekliyoruz
+      const newTrack: GeneratedTrack = {
+        id: `m-${seed}`,
+        prompt: prompt.trim(),
+        url: audioUrl,
+        timestamp: Date.now(),
+        duration: '0:30'
+      };
+      
+      // Kullanıcıya bir "üretiliyor" hissi vermek için 1.5 saniye yapay bekleme ekleyelim
+      await new Promise(resolve => setTimeout(resolve, 1500));
+
+      setTracks(prev => [newTrack, ...prev]);
+      setPrompt('');
+      setStatus('Synthesis Complete.');
 
     } catch (err: any) {
       console.error('Music Generation Error:', err);
-      setError(err.message || 'Sentez sırasında bir hata oluştu.');
+      setError('Sentez sırasında bir hata oluştu. Lütfen tekrar deneyin.');
     } finally {
       setIsGenerating(false);
-      // Status mesajını 3 saniye sonra temizle
       setTimeout(() => setStatus(''), 3000);
     }
   };
@@ -89,9 +77,15 @@ const MusicStudio: React.FC<MusicStudioProps> = ({ settings, user }) => {
       audioRef.current.pause();
       setPlayingId(null);
     } else {
+      // Önce src'yi set ediyoruz
       audioRef.current.src = track.url;
-      audioRef.current.play().catch(() => setError("Oynatma başarısız: Tarayıcı engellemiş olabilir."));
-      setPlayingId(track.id);
+      // Audio yüklenmeye başladığında çalması için:
+      audioRef.current.play()
+        .then(() => setPlayingId(track.id))
+        .catch(() => {
+          setError("Oynatma başarısız: Tarayıcı engellemiş olabilir veya müzik henüz hazır değil.");
+          setPlayingId(null);
+        });
     }
   };
 
@@ -101,6 +95,7 @@ const MusicStudio: React.FC<MusicStudioProps> = ({ settings, user }) => {
         ref={audioRef} 
         onEnded={() => setPlayingId(null)} 
         muted={isMuted}
+        controls={false} // Görünmez kalsın, biz butonlarla kontrol ediyoruz
       />
 
       <header className="p-6 md:p-8 border-b border-white/5 glass-panel z-20">
@@ -126,7 +121,6 @@ const MusicStudio: React.FC<MusicStudioProps> = ({ settings, user }) => {
       </header>
 
       <main className="flex-1 flex flex-col md:flex-row min-h-0">
-        {/* Kontrol Paneli */}
         <div className="w-full md:w-80 lg:w-96 border-r border-white/5 p-6 space-y-6 overflow-y-auto bg-slate-900/30 custom-scrollbar">
           <div className="space-y-4">
             <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Sahneyi Sese Dönüştür</label>
@@ -178,7 +172,6 @@ const MusicStudio: React.FC<MusicStudioProps> = ({ settings, user }) => {
           </div>
         </div>
 
-        {/* Parça Listesi */}
         <div className="flex-1 p-4 md:p-8 overflow-y-auto bg-slate-950 custom-scrollbar">
           <div className="max-w-4xl mx-auto space-y-4">
             <AnimatePresence mode="popLayout">
