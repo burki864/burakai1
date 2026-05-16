@@ -3,7 +3,6 @@ import { Message, SettingsState, Attachment } from "../types";
 const API_ENDPOINTS = {
   CHAT: "/api/chat",
   IMAGE: "/api/generate-image",
-  VIDEO: "/api/generate-video",
   VISION: "/api/analyze-vision",
   LINK: "/api/analyze-link",
   YOUTUBE: "/api/analyze-youtube",
@@ -63,28 +62,6 @@ export class AIService {
       return data.url; 
     } catch (error) {
       return `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1280&height=720&nologo=true`;
-    }
-  }
-
-  /**
-   * Video Üretir (Video - Pollinations)
-   */
-  async generateVideo(prompt: string): Promise<string> {
-    try {
-      const response = await fetch(API_ENDPOINTS.VIDEO, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt })
-      });
-
-      if (!response.ok) {
-        return `https://video.pollinations.ai/prompt/${encodeURIComponent(prompt)}?seed=${Date.now()}`;
-      }
-
-      const data = await response.json();
-      return data.url;
-    } catch (error) {
-      return `https://video.pollinations.ai/prompt/${encodeURIComponent(prompt)}?seed=${Date.now()}`;
     }
   }
 
@@ -222,7 +199,6 @@ export class AIService {
 
     // Komut ve anahtar kelime eşleşmesi
     if (lower.startsWith('/image') || lower.includes('görsel oluştur') || lower.includes('resim yap') || lower.includes('çiz')) return 'IMAGE_CREATE';
-    if (lower.startsWith('/video') || lower.includes('video oluştur') || lower.includes('video yap')) return 'VIDEO_CREATE';
     if (lower.startsWith('/web') || lower.includes('site kur') || lower.includes('web sitesi yap')) return 'WEB_BUILD_CREATE';
     if (lower.startsWith('/search') || lower.includes('ara') || lower.includes('kimdir') || lower.includes('nedir')) return 'WEB_SEARCH';
     

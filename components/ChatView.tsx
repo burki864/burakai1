@@ -28,6 +28,8 @@ interface ChatViewProps {
   onNewChat: () => void;
   onSaveImage?: (img: any) => void;
   onSetAnalysisContext?: (res: any) => void;
+  points: number;
+  spendPoints: (amount: number) => boolean;
 }
 
 const CodeBlock = ({ language, value }: { language: string; value: string }) => {
@@ -74,7 +76,7 @@ const CodeBlock = ({ language, value }: { language: string; value: string }) => 
 };
 
 const ChatView: React.FC<ChatViewProps> = ({ 
-  chat, settings, user, onUpdateMessages, onNewChat, onSaveImage, onSetAnalysisContext 
+  chat, settings, user, onUpdateMessages, onNewChat, onSaveImage, onSetAnalysisContext, points, spendPoints 
 }) => {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -143,6 +145,11 @@ const ChatView: React.FC<ChatViewProps> = ({
     const cleanInput = input.trim();
     if ((!cleanInput && attachments.length === 0) || isTyping) return;
 
+    if (points < 1) {
+      setError("Yetersiz Puan! (Mesaj göndermek için 1 Coin gerekir)");
+      return;
+    }
+
     if (!chat) {
         onNewChat();
         return;
@@ -159,6 +166,7 @@ const ChatView: React.FC<ChatViewProps> = ({
     
     const newMessages = [...(chat.messages || []), userMsg];
     onUpdateMessages(newMessages);
+    spendPoints(1);
     saveToSupabase(user.id, cleanInput, 'user').catch(e => console.debug(e));
 
     setInput('');
@@ -196,16 +204,6 @@ const ChatView: React.FC<ChatViewProps> = ({
         return;
       } 
       
-      if (route === 'VIDEO_CREATE') {
-        assistantMsg.isGenerating = true;
-        assistantMsg.generationType = 'video';
-        onUpdateMessages([...newMessages, assistantMsg]);
-        const url = await aiService.generateVideo(cleanInput.replace(/^\/video\s*/i, ''));
-        onUpdateMessages([...newMessages, { ...assistantMsg, isGenerating: false, videoUrl: url }]);
-        dbService.saveVideo(user.id, cleanInput, url).catch(e => console.debug(e));
-        return;
-      }
-
       // Analysis Routes
       if (route === 'IMAGE_ANALYZE' || route === 'VIDEO_ANALYZE') {
         setStreamingMessage("Analyzing visual content...");
@@ -265,31 +263,6 @@ const ChatView: React.FC<ChatViewProps> = ({
             return;
           }
           
-          if (type === 'VIDEO') {
-            const url = await aiService.generateVideo(prompt);
-            onUpdateMessages([...newMessages, { 
-              ...assistantMsg, 
-              content: responseText.replace(genMatch[0], ''), 
-              videoUrl: url 
-            }]);
-            return;
-          }
-
-          if (type === 'MUSIC') {
-            const response = await fetch('/api/generate-music', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ prompt })
-            });
-            const data = await response.json();
-            onUpdateMessages([...newMessages, { 
-              ...assistantMsg, 
-              content: responseText.replace(genMatch[0], ''), 
-              audioUrl: data.url 
-            }]);
-            return;
-          }
-
           if (type === 'WEBSITE') {
             window.dispatchEvent(new CustomEvent('generate-website-section', { 
               detail: { type: 'General', prompt } 
@@ -549,8 +522,9 @@ const ChatView: React.FC<ChatViewProps> = ({
                 <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-500 hover:text-blue-400 transition-colors"><Paperclip size={20}/></button>
                 <button onClick={startSpeechRecognition} className={`p-2 transition-colors ${isListening ? 'text-red-500 animate-pulse' : 'text-slate-500 hover:text-blue-400'}`}><Mic size={20} /></button>
               </div>
-              <button onClick={handleSend} disabled={isTyping} className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-blue-600 text-white flex items-center justify-center shadow-2xl hover:scale-105 transition-transform disabled:opacity-50">
+              <button onClick={handleSend} disabled={isTyping} className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-blue-600 text-white flex flex-col items-center justify-center shadow-2xl hover:scale-105 transition-transform disabled:opacity-50">
                 {isTyping ? <Loader2 className="animate-spin" /> : <Send size={20} />}
+                {!isTyping && <span className="text-[8px] font-black mt-1 opacity-70">-1</span>}
               </button>
             </div>
           </div>

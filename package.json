@@ -13,6 +13,7 @@
     "@fal-ai/serverless-client": "^0.15.0",
     "@google/genai": "^1.40.0",
     "@gradio/client": "^2.0.4",
+    "@heyputer/puter.js": "^2.3.2",
     "@supabase/supabase-js": "^2.95.3",
     "@vitejs/plugin-react": "^5.1.4",
     "axios": "^1.13.5",

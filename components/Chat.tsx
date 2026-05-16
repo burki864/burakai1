@@ -5,7 +5,9 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
+// 🆔 Key hatasını çözmek için id ekledik
 interface Message {
+  id: string;
   role: 'user' | 'assistant';
   content: string;
 }
@@ -71,63 +73,47 @@ export const Chat: React.FC = () => {
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
-    const userMsg: Message = { role: 'user', content: input };
+    // 🛡️ Benzersiz ID oluşturuyoruz
+    const userMsg: Message = { 
+      id: Date.now().toString() + "-user", 
+      role: 'user', 
+      content: input 
+    };
+
     setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
 
     try {
-      // 🚀 BACKEND'SİZ DİREKT CHAT ÇÖZÜMÜ
-      // Vercel /api/chat yerine doğrudan Pollinations API kullanıyoruz
-      const response = await fetch('https://text.pollinations.ai/', {
+      // 🧹 Veriyi saflaştır (Attachments hatasını önlemek için)
+      const cleanMessages = [...messages, userMsg].map(({ role, content }) => ({
+        role,
+        content
+      }));
+
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [
-            { 
-              role: 'system', 
-              content: 'Sen BurakAI adında, 13 yaşındaki dahi yazılımcı Burak Eren Kısa tarafından geliştirilmiş, nazik ve çok zeki bir yapay zeka asistanısın. React, Tailwind ve oyun geliştirme konularında uzmansın.' 
-            },
-            ...messages, 
-            userMsg
-          ],
-          model: 'openai', // Diğer seçenekler: 'mistral', 'p1'
-          stream: true
-        })
+        body: JSON.stringify({ messages: cleanMessages })
       });
 
-      if (!response.ok) throw new Error('API Bağlantı Hatası');
+      if (!response.ok) throw new Error('Sunucu Hatası');
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      let assistantMsg = '';
+      const data = await response.json();
+      
+      // 🤖 Asistan mesajını ekle
+      setMessages(prev => [...prev, { 
+        id: Date.now().toString() + "-ai", 
+        role: 'assistant', 
+        content: data.content 
+      }]);
 
-      setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
-
-      if (reader) {
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunk = decoder.decode(value, { stream: true });
-          // Pollinations bazen direkt text bazen JSON chunk gönderir
-          // En güvenli yöntem gelen parçayı direkt eklemektir
-          assistantMsg += chunk;
-
-          setMessages(prev => {
-            const newMsgs = [...prev];
-            if (newMsgs.length > 0) {
-              newMsgs[newMsgs.length - 1].content = assistantMsg;
-            }
-            return [...newMsgs];
-          });
-        }
-      }
     } catch (error) {
       console.error("Chat Error:", error);
       setMessages(prev => [...prev, { 
+        id: "error-" + Date.now(),
         role: 'assistant', 
-        content: 'Bağlantı kurulamadı. Lütfen internetini kontrol et veya biraz sonra tekrar dene.' 
+        content: 'Şu an bağlantı kurulamıyor, lütfen birazdan tekrar dene.' 
       }]);
     } finally {
       setIsLoading(false);
@@ -143,7 +129,7 @@ export const Chat: React.FC = () => {
         </div>
         <div className="flex flex-col">
           <h2 className="font-bold text-zinc-100 tracking-tight leading-none">BurakAI Chat</h2>
-          <span className="text-[10px] text-emerald-500 font-bold uppercase mt-1 tracking-widest">Online & Ready</span>
+          <span className="text-[10px] text-emerald-500 font-bold uppercase mt-1 tracking-widest">Sistem Aktif</span>
         </div>
       </div>
 
@@ -157,9 +143,9 @@ export const Chat: React.FC = () => {
         )}
         
         <AnimatePresence initial={false}>
-          {messages.map((msg, i) => (
+          {messages.map((msg) => (
             <motion.div
-              key={i}
+              key={msg.id} // 🔑 Artık ID kullanıyoruz, hata bitti!
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -207,7 +193,7 @@ export const Chat: React.FC = () => {
             <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700">
               <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
             </div>
-            <span className="text-xs text-zinc-500 font-bold uppercase tracking-widest animate-pulse">Sinyal İşleniyor...</span>
+            <span className="text-xs text-zinc-500 font-bold uppercase tracking-widest animate-pulse">Düşünülüyor...</span>
           </motion.div>
         )}
       </div>
@@ -224,7 +210,7 @@ export const Chat: React.FC = () => {
                 handleSend();
               }
             }}
-            placeholder="Algoritmik bir soru sor veya sohbet et..."
+            placeholder="Bir mesaj yaz..."
             className="w-full bg-zinc-950 text-zinc-100 rounded-xl p-4 pr-14 border border-zinc-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/40 transition-all resize-none min-h-[56px] max-h-40"
             rows={1}
           />

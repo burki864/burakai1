@@ -45,9 +45,11 @@ async function startServer() {
       chatMessages = [{ role: "user", content: inputs }];
     }
 
+    // Sistem promptunu Türkçe kuralına tamamen sadık kalacak şekilde güncelledik
     const systemPrompt = {
       role: "system",
-      content: `You are BurakAI Master Architect. You are a helpful AI assistant that can also trigger media generation.
+      content: `DİL KURALI: KESİNLİKLE %100 TÜRKÇE CEVAP VER. Kullanıcı İngilizce yazsa dahi yanıt dili Türkçe olmalıdır.
+      You are BurakAI Master Architect. You are a helpful AI assistant that can also trigger media generation.
       
       When a user asks to create something, you MUST include a generation command in your response in the format:
       [GENERATE: TYPE, PROMPT]
@@ -59,8 +61,7 @@ async function startServer() {
       - WEBSITE: For website sections (e.g., [GENERATE: WEBSITE, a hero section for a gym])
       
       You can still talk normally, but always include the command if generation is requested.
-      Example: "Sure! I'll generate that image for you. [GENERATE: IMAGE, a red dragon]"
-      `
+      Example: "Tabii ki! Senin için hemen bu görseli üretiyorum. [GENERATE: IMAGE, a red dragon]"`
     };
 
     const finalMessages = [systemPrompt, ...chatMessages];
@@ -111,6 +112,7 @@ async function startServer() {
               { role: "user", content: prompt }
             ],
             model: MODELS.FAST,
+            temperature: 0.4 // Aşırı kaymaları önlemek için sıcaklık dengelendi
           });
           enrichedPrompt = completion.choices[0]?.message?.content || prompt;
         }
@@ -166,7 +168,8 @@ async function startServer() {
         contents: [{ parts: [{ text: systemPrompt }] }],
       });
 
-      const code = response.text?.replace(/```html|```/g, '').trim();
+      const code = response.text?.replace(/```html|
+```/g, '').trim();
       res.json({ code });
     } catch (error: any) {
       console.error('Section Generation Error:', error);
@@ -234,7 +237,7 @@ async function startServer() {
     }
   });
 
-  // --- NEW ANALYSIS MODULES ---
+  // --- ANALYSIS MODULES ---
 
   // Vision Analysis
   app.post("/api/analyze-vision", async (req, res) => {
@@ -412,8 +415,6 @@ async function startServer() {
     }
   });
 
-  // --- END NEW ANALYSIS MODULES ---
-
   // AI Music Generation (Direct URL)
   app.post("/api/generate-music", async (req, res) => {
     try {
@@ -421,7 +422,6 @@ async function startServer() {
       if (!prompt) return res.status(400).json({ error: "Prompt is required" });
 
       const seed = Math.floor(Math.random() * 1000000);
-      // Pollinations AI Audio API URL (Direct construction)
       const audioUrl = `https://pollinations.ai/p/${encodeURIComponent(prompt)}?model=audio&seed=${seed}`;
 
       return res.status(200).json({ 
@@ -443,7 +443,6 @@ async function startServer() {
     res.json(request);
   });
 
-  // AI Video Generation (Async with Polling)
   // AI Video Studio (Pollinations.ai)
   app.post("/api/generate-video", async (req, res) => {
     try {
@@ -479,7 +478,6 @@ async function startServer() {
 
       console.log("Generating image with Pollinations.ai...");
       
-      // Optional prompt enrichment
       let optimizedPrompt = prompt;
       try {
         if (groq) {
@@ -492,6 +490,7 @@ async function startServer() {
               { role: "user", content: prompt },
             ],
             model: MODELS.FAST,
+            temperature: 0.4
           });
           optimizedPrompt = completion.choices[0]?.message?.content || prompt;
         }

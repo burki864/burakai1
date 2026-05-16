@@ -7,15 +7,15 @@ import Auth from './components/Auth';
 import Sidebar from './components/Sidebar';
 import ChatView from './components/ChatView';
 import ImageGenerator from './components/ImageGenerator';
-import VideoStudio from './components/VideoStudio';
 import AIWebsiteBuilder from './components/AIWebsiteBuilder';
-import MusicStudio from './components/MusicStudio';
 import Settings from './components/Settings';
 import Downloads from './components/Downloads';
 import BannedScreen from './components/BannedScreen';
 import MouseGlow from './components/MouseGlow';
 import IntroAnimation from './components/IntroAnimation';
-import { Menu, X } from 'lucide-react';
+import { Menu, X, Coins, Star } from 'lucide-react';
+import { usePoints, COST_IMAGE } from './hooks/usePoints';
+import StarExplosion from './components/StarExplosion';
 import { AnalysisResult } from './types';
 
 const MotionDiv = motion.div as any;
@@ -41,6 +41,8 @@ const App: React.FC = () => {
   });
   const [banReason, setBanReason] = useState<string | undefined>(undefined);
   const [isSecurityLoading, setIsSecurityLoading] = useState(true);
+
+  const { points, spendPoints, canClaimDaily, claimDaily } = usePoints();
 
   useEffect(() => storageService.setUser(user), [user]);
   useEffect(() => storageService.saveChats(chats), [chats]);
@@ -136,6 +138,15 @@ const App: React.FC = () => {
         )}
       </AnimatePresence>
 
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 px-4 py-2 rounded-2xl glass-panel border border-white/10 shadow-2xl">
+        <div className="p-1.5 rounded-lg bg-yellow-500/20 text-yellow-500">
+          <Coins size={16} />
+        </div>
+        <span className="text-sm font-black tracking-tighter text-yellow-500">
+          {points.toFixed(1)} <span className="text-[10px] opacity-50">COIN</span>
+        </span>
+      </div>
+
       <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="fixed top-3.5 right-4 z-[60] p-2.5 rounded-xl glass-panel border border-white/10 md:hidden transition-transform active:scale-90 shadow-2xl">
         {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
@@ -173,12 +184,57 @@ const App: React.FC = () => {
                   onNewChat={createNewChat}
                   onSaveImage={(img) => setImages(p => [img, ...p])}
                   onSetAnalysisContext={(res) => setAnalysisContext(p => [...p, res])}
+                  points={points}
+                  spendPoints={spendPoints}
                 />
               )}
-              {view === 'images' && <ImageGenerator images={images} onSaveImage={(img) => setImages(p => [img, ...p])} onDeleteImage={(id) => setImages(p => p.filter(i => i.id !== id))} settings={settings} user={user} />}
-              {view === 'video-studio' && <VideoStudio settings={settings} user={user} />}
-              {view === 'web-builder' && <AIWebsiteBuilder settings={settings} user={user} analysisContext={analysisContext} />}
-              {view === 'music-studio' && <MusicStudio settings={settings} user={user} />}
+              {view === 'images' && (
+                <ImageGenerator 
+                  images={images} 
+                  onSaveImage={(img) => setImages(p => [img, ...p])} 
+                  onDeleteImage={(id) => setImages(p => p.filter(i => i.id !== id))} 
+                  settings={settings} 
+                  user={user} 
+                  points={points}
+                  spendPoints={spendPoints}
+                />
+              )}
+              {view === 'stars' && (
+                <div className="flex flex-col items-center justify-center h-full p-8 text-center">
+                  <div className="max-w-md w-full glass-panel border border-white/10 rounded-[3rem] p-12 flex flex-col items-center gap-8 relative overflow-hidden">
+                    <div className="absolute inset-0 bg-gradient-to-b from-yellow-500/5 to-transparent pointer-events-none" />
+                    
+                    <div className="flex flex-col items-center gap-2">
+                      <div className="p-4 rounded-3xl bg-yellow-500/10 text-yellow-500 border border-yellow-500/20 shadow-2xl shadow-yellow-500/10 mb-4">
+                        <Star size={48} fill="currentColor" />
+                      </div>
+                      <h2 className="text-4xl font-black tracking-tighter">YILDIZ PATLAT</h2>
+                      <p className="text-white/40 font-medium text-sm">Her gün yeni bir yıldız keşfet ve puanlarını topla!</p>
+                    </div>
+
+                    <StarExplosion 
+                      disabled={!canClaimDaily()} 
+                      onExplode={(amount) => claimDaily(amount)} 
+                    />
+
+                    {!canClaimDaily() && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-4 rounded-2xl bg-white/5 border border-white/10 text-white/60 text-xs font-bold uppercase tracking-widest"
+                      >
+                        Bugünlük keşif tamamlandı. Yarın tekrar gel!
+                      </motion.div>
+                    )}
+                  </div>
+                </div>
+              )}
+              {view === 'web-builder' && (
+                <AIWebsiteBuilder 
+                  points={points}
+                  spendPoints={spendPoints}
+                />
+              )}
               {view === 'settings' && <Settings settings={settings} onUpdateSettings={setSettings} user={user} onLogout={handleLogout} onUpdateUser={setUser} />}
               {view === 'downloads' && <Downloads settings={settings} />}
             </MotionDiv>
