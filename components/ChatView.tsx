@@ -58,7 +58,7 @@ const CodeBlock = ({ language, value }: { language: string; value: string }) => 
           ) : (
             <>
               <Copy size={12} />
-              <span>COPY</span>
+              <span className="text-slate-400">COPY</span>
             </>
           )}
         </button>
@@ -85,6 +85,7 @@ const ChatView: React.FC<ChatViewProps> = ({
   const [error, setError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isListening, setIsListening] = useState(false);
 
@@ -96,6 +97,15 @@ const ChatView: React.FC<ChatViewProps> = ({
       });
     }
   }, [chat?.messages, streamingMessage]);
+
+  // Textarea yüksekliğini içeriğe göre otomatik ayarlar
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.style.height = 'auto';
+      textarea.style.height = `${Math.min(textarea.scrollHeight, 200)}px`; // Maksimum 200px limit
+    }
+  }, [input]);
 
   const detectIntent = (text: string): 'image' | 'video' | 'text' => {
     const lower = text.toLowerCase();
@@ -138,7 +148,7 @@ const ChatView: React.FC<ChatViewProps> = ({
       }
     }
     setAttachments(prev => [...prev, ...newAttachments]);
-    if (fileInputRef.current) fileInputRef.current.value = ''; // Inputu temizle ki aynı dosya tekrar seçilebilsin
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleSend = async () => {
@@ -190,7 +200,6 @@ const ChatView: React.FC<ChatViewProps> = ({
         const url = await aiService.generateImage(cleanInput.replace(/^\/image\s*/i, ''));
         onUpdateMessages([...newMessages, { ...assistantMsg, isGenerating: false, imageUrl: url }]);
         
-        // Global galeriye ekle
         if (onSaveImage) {
           onSaveImage({
             id: Date.now().toString(),
@@ -204,7 +213,6 @@ const ChatView: React.FC<ChatViewProps> = ({
         return;
       } 
       
-      // Analysis Routes
       if (route === 'IMAGE_ANALYZE' || route === 'VIDEO_ANALYZE') {
         setStreamingMessage("Analyzing visual content...");
         const result = await aiService.analyzeVision(cleanInput, attachments);
@@ -236,7 +244,6 @@ const ChatView: React.FC<ChatViewProps> = ({
         responseText = `### Web Siteniz Hazırlandı! 🚀\n\n**Başlık:** ${result.title}\n**Açıklama:** ${result.description}\n\n**Oluşturulan Bölümler:**\n${result.sections.map((s: any) => `- **${s.name}**: ${s.content}`).join('\n')}\n\nWeb sitenizin tam kodunu görmek ve düzenlemek için sol menüden **"Web Builder"** sekmesine gidebilirsiniz.`;
       }
       else {
-        // Default Chat
         responseText = await aiService.generateText(
           cleanInput, 
           newMessages.slice(-6), 
@@ -246,7 +253,6 @@ const ChatView: React.FC<ChatViewProps> = ({
       }
 
       if (responseText) {
-        // Parse for generation commands [GENERATE: TYPE, PROMPT]
         const genMatch = responseText.match(/\[GENERATE:\s*(\w+),\s*(.*?)\]/i);
         
         if (genMatch) {
@@ -473,7 +479,6 @@ const ChatView: React.FC<ChatViewProps> = ({
 
       <div className="relative z-20 p-4 md:p-10">
         <div className="max-w-4xl mx-auto space-y-4">
-          {/* DOSYA ÖNİZLEME PANELİ */}
           <AnimatePresence>
             {attachments.length > 0 && (
               <motion.div 
@@ -512,10 +517,13 @@ const ChatView: React.FC<ChatViewProps> = ({
           
           <div className="glass-panel rounded-[2.5rem] border-white/10 p-2 md:p-4 shadow-3xl">
             <textarea 
-              rows={1} value={input} onChange={(e) => setInput(e.target.value)}
+              ref={textareaRef}
+              rows={1} 
+              value={input} 
+              onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
               placeholder={t.placeholder}
-              className="w-full bg-transparent border-none focus:ring-0 p-4 text-white text-lg md:text-2xl placeholder-slate-700 resize-none" 
+              className="w-full bg-transparent border-none focus:ring-0 p-4 text-white text-lg md:text-2xl placeholder-slate-700 resize-none custom-scrollbar" 
             />
             <div className="flex items-center justify-between px-4 py-2 border-t border-white/5">
               <div className="flex gap-2">

@@ -5,7 +5,6 @@ import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
-// 🆔 Key hatasını çözmek için id ekledik
 interface Message {
   id: string;
   role: 'user' | 'assistant';
@@ -73,9 +72,9 @@ export const Chat: React.FC = () => {
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
-    // 🛡️ Benzersiz ID oluşturuyoruz
+    // 🛡️ Benzersiz ID üretimi için her zaman en güvenli yol randomUUID'dir
     const userMsg: Message = { 
-      id: Date.now().toString() + "-user", 
+      id: crypto.randomUUID(), 
       role: 'user', 
       content: input 
     };
@@ -85,7 +84,6 @@ export const Chat: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // 🧹 Veriyi saflaştır (Attachments hatasını önlemek için)
       const cleanMessages = [...messages, userMsg].map(({ role, content }) => ({
         role,
         content
@@ -101,9 +99,8 @@ export const Chat: React.FC = () => {
 
       const data = await response.json();
       
-      // 🤖 Asistan mesajını ekle
       setMessages(prev => [...prev, { 
-        id: Date.now().toString() + "-ai", 
+        id: crypto.randomUUID(), 
         role: 'assistant', 
         content: data.content 
       }]);
@@ -111,7 +108,7 @@ export const Chat: React.FC = () => {
     } catch (error) {
       console.error("Chat Error:", error);
       setMessages(prev => [...prev, { 
-        id: "error-" + Date.now(),
+        id: crypto.randomUUID(),
         role: 'assistant', 
         content: 'Şu an bağlantı kurulamıyor, lütfen birazdan tekrar dene.' 
       }]);
@@ -145,7 +142,7 @@ export const Chat: React.FC = () => {
         <AnimatePresence initial={false}>
           {messages.map((msg) => (
             <motion.div
-              key={msg.id} // 🔑 Artık ID kullanıyoruz, hata bitti!
+              key={msg.id}
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
@@ -164,15 +161,13 @@ export const Chat: React.FC = () => {
                 }`}>
                   <ReactMarkdown
                     components={{
-                      code({ node, className, children, ...props }: any) {
+                      code({ className, children, ...props }: any) {
                         const match = /language-(\w+)/.exec(className || '');
+                        // className varsa bu bir çok satırlı kod bloğudur (```javascript vb.)
                         return match ? (
-                          <CodeBlock
-                            language={match[1]}
-                            value={String(children).replace(/\n$/, '')}
-                            {...props}
-                          />
+                          <CodeBlock '')} language="{match[1]}" value="{String(children).replace(/\n$/," {...props}/>
                         ) : (
+                          // className yoksa satır içi (inline) koddur (`kod` gibi)
                           <code className="bg-zinc-800 text-emerald-400 px-1.5 py-0.5 rounded text-xs font-mono" {...props}>
                             {children}
                           </code>
@@ -191,7 +186,7 @@ export const Chat: React.FC = () => {
         {isLoading && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start items-center gap-3">
             <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center border border-zinc-700">
-              <Loader2 className="w-4 h-4 animate-spin text-emerald-500" />
+              <Loader2 className="w-4 h-4 animate-spin text-emerald-500"/>
             </div>
             <span className="text-xs text-zinc-500 font-bold uppercase tracking-widest animate-pulse">Düşünülüyor...</span>
           </motion.div>
@@ -219,7 +214,7 @@ export const Chat: React.FC = () => {
             disabled={isLoading || !input.trim()}
             className="absolute right-3 bottom-3 p-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-all disabled:opacity-30 disabled:hover:bg-emerald-600 shadow-lg shadow-emerald-900/20"
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-4 h-4"/>
           </button>
         </div>
       </div>
