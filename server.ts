@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { createProxyMiddleware } from "http-proxy-middleware";
 import cors from "cors";
@@ -866,6 +867,16 @@ User input: "${prompt}"` }] }],
     } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
+  });
+
+  // APK Download endpoint: serves local /public/BurakAI.apk if exists, otherwise redirects to release URL
+  app.get(["/BurakAI.apk", "/downloads/BurakAI.apk"], (req, res) => {
+    const localApkPath = path.join(process.cwd(), "public", "BurakAI.apk");
+    if (fs.existsSync(localApkPath)) {
+      return res.download(localApkPath, "BurakAI.apk");
+    }
+    // Fallback if local file not placed yet
+    return res.redirect("https://github.com/burki864/burakai1/releases/download/v2.1/BurakAI.apk");
   });
 
   // Vite middleware for development

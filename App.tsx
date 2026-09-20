@@ -281,7 +281,7 @@ const App: React.FC = () => {
                 />
               )}
               {view === 'settings' && <Settings settings={settings} onUpdateSettings={setSettings} user={user} onLogout={handleLogout} onUpdateUser={setUser} />}
-              {view === 'downloads' && <Downloads settings={settings} onUpdateSettings={setSettings} />}
+              {view === 'downloads' && <Downloads settings={settings} />}
             </MotionDiv>
           )}
         </AnimatePresence>

@@ -89,7 +89,6 @@ export interface SettingsState {
   systemPrompt: string;
   searchEnabled: boolean;
   activeTheme: ThemeType;
-  apkUrl?: string;
 }
 
 export interface ImageGeneration {

@@ -24,6 +24,13 @@ export const INTENT_KEYWORDS = {
   video: ['video yap', 'video oluştur', 'create video', 'generate video', 'make video', 'animasyon yap']
 };
 
+export const DOWNLOAD_LINKS = {
+  // Sunucudaki /public/BurakAI.apk dosyasını indirir veya harici bir URL verilebilir
+  androidApk: '/downloads/BurakAI.apk',
+  fallbackApkUrl: 'https://drive.google.com/file/d/1LXLxBHAm8zClvIq_1HjD1KPbYsa-wYhZ/view?usp=drive_link',
+  windowsExe: 'https://github.com/burki864/burakai1/releases/download/v2.1/BurakAI_kur.exe'
+};
+
 export const TRANSLATIONS: Record<Language, any> = {
   [Language.EN]: {
     nav: {
