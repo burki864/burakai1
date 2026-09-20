@@ -24,7 +24,9 @@ import {
   Flower2,
   Waves,
   ExternalLink,
-  ArrowRight
+  ArrowRight,
+  Smartphone,
+  Link as LinkIcon
 } from 'lucide-react';
 import { SettingsState, User, Language, ThemeType } from '../types';
 import { TRANSLATIONS } from '../constants';
@@ -56,6 +58,10 @@ const Settings: React.FC<SettingsProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<{ summary: string; sources: { title: string; url: string }[] } | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  // APK URL State
+  const [apkUrlInput, setApkUrlInput] = useState(settings.apkUrl || 'https://github.com/burki864/burakai1/releases/download/v2.1/BurakAI.apk');
+  const [apkSaveSuccess, setApkSaveSuccess] = useState(false);
 
   const t = TRANSLATIONS[settings.language].settings;
 
@@ -527,6 +533,62 @@ const Settings: React.FC<SettingsProps> = ({
              >
                English
              </button>
+          </div>
+        </section>
+
+        {/* Android APK Download Link */}
+        <section className="space-y-4 md:space-y-6">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-emerald-500/20 text-emerald-400">
+              <Smartphone size={20} className="sm:w-6 sm:h-6" />
+            </div>
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight">Android APK İndirme Bağlantısı</h2>
+              <p className="text-slate-500 text-[9px] sm:text-sm font-bold uppercase tracking-widest">İndirmeler sekmesindeki APK linki</p>
+            </div>
+          </div>
+
+          <div className="p-6 rounded-[2rem] glass-panel border border-white/5 space-y-4">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-300 flex items-center gap-2">
+                <LinkIcon size={14} className="text-emerald-400" />
+                APK URL
+              </label>
+              <input
+                type="url"
+                value={apkUrlInput}
+                onChange={(e) => setApkUrlInput(e.target.value)}
+                placeholder="https://.../BurakAI.apk"
+                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-emerald-500/50 transition-colors"
+              />
+            </div>
+
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  update('apkUrl', apkUrlInput.trim());
+                  setApkSaveSuccess(true);
+                  setTimeout(() => setApkSaveSuccess(false), 2000);
+                }}
+                className="px-5 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 font-black text-xs uppercase tracking-wider transition-all flex items-center gap-2"
+              >
+                {apkSaveSuccess ? <CheckCircle size={15} /> : <Save size={15} />}
+                {apkSaveSuccess ? 'Kaydedildi' : 'Bağlantıyı Kaydet'}
+              </button>
+
+              <button
+                onClick={() => {
+                  const defaultUrl = 'https://github.com/burki864/burakai1/releases/download/v2.1/BurakAI.apk';
+                  setApkUrlInput(defaultUrl);
+                  update('apkUrl', defaultUrl);
+                  setApkSaveSuccess(true);
+                  setTimeout(() => setApkSaveSuccess(false), 2000);
+                }}
+                className="px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white font-bold text-xs uppercase tracking-wider transition-all"
+              >
+                Varsayılana Sıfırla
+              </button>
+            </div>
           </div>
         </section>
 
