@@ -869,14 +869,14 @@ User input: "${prompt}"` }] }],
     }
   });
 
-  // APK Download endpoint: serves local /public/BurakAI.apk if exists, otherwise redirects to release URL
+  // APK Download endpoint: serves local /public/BurakAI.apk if exists, otherwise redirects to Google Drive URL
   app.get(["/BurakAI.apk", "/downloads/BurakAI.apk"], (req, res) => {
     const localApkPath = path.join(process.cwd(), "public", "BurakAI.apk");
     if (fs.existsSync(localApkPath)) {
       return res.download(localApkPath, "BurakAI.apk");
     }
-    // Fallback if local file not placed yet
-    return res.redirect("https://github.com/burki864/burakai1/releases/download/v2.1/BurakAI.apk");
+    // Direct redirect to user's Google Drive link
+    return res.redirect("https://drive.google.com/file/d/1LXLxBHAm8zClvIq_1HjD1KPbYsa-wYhZ/view?usp=drive_link");
   });
 
   // Vite middleware for development

@@ -25,9 +25,7 @@ export const INTENT_KEYWORDS = {
 };
 
 export const DOWNLOAD_LINKS = {
-  // Sunucudaki /public/BurakAI.apk dosyasını indirir veya harici bir URL verilebilir
-  androidApk: '/downloads/BurakAI.apk',
-  fallbackApkUrl: 'https://drive.google.com/file/d/1LXLxBHAm8zClvIq_1HjD1KPbYsa-wYhZ/view?usp=drive_link',
+  androidApk: 'https://drive.google.com/file/d/1LXLxBHAm8zClvIq_1HjD1KPbYsa-wYhZ/view?usp=drive_link',
   windowsExe: 'https://drive.google.com/file/d/161oMLN7t5aN8H0DnzrXHp7GBejnTmc8h/view?usp=drive_link'
 };
 

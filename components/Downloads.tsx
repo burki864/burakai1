@@ -98,13 +98,25 @@ const Downloads: React.FC<DownloadsProps> = ({ settings }) => {
               </div>
 
               <div className="w-full mt-auto">
-                <button 
-                  onClick={() => handleDownloadAction(opt.id, opt.link)}
-                  className="w-full py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-white/5"
-                >
-                  {opt.id === 'apple' ? <ExternalLink size={16} /> : <Download size={16} />}
-                  {opt.id === 'apple' ? (isTr ? 'Adımları Gör' : 'See Steps') : t.downloadNow}
-                </button>
+                {opt.id === 'apple' ? (
+                  <button 
+                    onClick={() => setShowPwaGuide(true)}
+                    className="w-full py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-white/5"
+                  >
+                    <ExternalLink size={16} />
+                    {isTr ? 'Adımları Gör' : 'See Steps'}
+                  </button>
+                ) : (
+                  <a 
+                    href={opt.link || '#'}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-4 rounded-2xl bg-white/10 hover:bg-white/20 text-white font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center gap-2 border border-white/5"
+                  >
+                    <Download size={16} />
+                    {t.downloadNow}
+                  </a>
+                )}
               </div>
             </div>
           ))}
