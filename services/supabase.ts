@@ -1,60 +1,20 @@
-
-import { createClient } from '@supabase/supabase-js';
 import { User } from '../types';
 
-// Defensive environment variable retrieval helper
-const getEnvVar = (key: string): string => {
-  try {
-    if (typeof import.meta !== 'undefined' && (import.meta as any).env && (import.meta as any).env[key]) {
-      return (import.meta as any).env[key];
-    }
-  } catch (e) {}
-  try {
-    if (typeof process !== 'undefined' && process && process.env && process.env[key]) {
-      return process.env[key];
-    }
-  } catch (e) {}
-  return '';
-};
-
-const SUPABASE_URL = getEnvVar('VITE_SUPABASE_URL');
-const SUPABASE_ANON_KEY = getEnvVar('VITE_SUPABASE_ANON_KEY');
-
-export const isSupabaseConfigured = !!(SUPABASE_URL && SUPABASE_ANON_KEY && SUPABASE_URL.includes('.'));
-
-export const supabase = createClient(
-  SUPABASE_URL || 'https://placeholder.supabase.co', 
-  SUPABASE_ANON_KEY || 'placeholder'
-);
+export const isSupabaseConfigured = true; // Handled dynamically on the Aiven backend!
 
 /**
  * Inserts or updates a user profile.
  */
 export async function createProfile(user: User) {
-  if (!isSupabaseConfigured) return null;
-  
   try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .upsert([
-        {
-          id: user.id,
-          username: user.name,
-          email: user.email,
-          avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.id}`,
-          banned: false,
-          created_at: new Date().toISOString(),
-        }
-      ], { onConflict: 'id' });
-
-    if (error) {
-      if (error.code === '23503') {
-        console.warn("Supabase Foreign Key Constraint: Profile not persisted.");
-        return null;
-      }
-      throw error;
-    }
-    return data;
+    const res = await fetch('/api/db/profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user })
+    });
+    if (!res.ok) throw new Error('Failed to create profile');
+    const json = await res.json();
+    return json.data;
   } catch (error) {
     console.error('Database Sync Error:', error);
     return null;
@@ -62,15 +22,15 @@ export async function createProfile(user: User) {
 }
 
 export async function updateProfile(userId: string, updates: { username?: string; avatar_url?: string }) {
-  if (!isSupabaseConfigured) return null;
   try {
-    const { data, error } = await supabase
-      .from('profiles')
-      .update(updates)
-      .eq('id', userId);
-
-    if (error) throw error;
-    return data;
+    const res = await fetch('/api/db/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: userId, updates })
+    });
+    if (!res.ok) throw new Error('Failed to update profile');
+    const json = await res.json();
+    return json.data;
   } catch (error) {
     console.error('Error updating profile:', error);
     throw error;
@@ -81,20 +41,15 @@ export async function updateProfile(userId: string, updates: { username?: string
  * Sends and persists a message.
  */
 export async function sendMessage(userId: string, text: string, role: 'user' | 'assistant' = 'user') {
-  if (!isSupabaseConfigured) return null;
   try {
-    const { data, error } = await supabase
-      .from('messages')
-      .insert([
-        {
-          user_id: userId,
-          content: text,
-          role: role,
-          created_at: new Date().toISOString()
-        }
-      ]);
-    if (error) throw error;
-    return data;
+    const res = await fetch('/api/db/message', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, text, role })
+    });
+    if (!res.ok) throw new Error('Failed to send message');
+    const json = await res.json();
+    return json.data;
   } catch (error) {
     console.warn('Persistence error:', error);
     return null;
@@ -108,52 +63,24 @@ export async function sendMessage(userId: string, text: string, role: 'user' | '
 export const dbService = {
   // --- KULLANICI ADI KULLANIMDA MI? ---
   checkUsernameAvailability: async (username: string): Promise<boolean> => {
-    if (!isSupabaseConfigured) return true;
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('username')
-        .ilike('username', username)
-        .maybeSingle();
-      
-      if (error) {
-          console.error('Username check error:', error);
-          return true; // Hata durumunda izin ver veya güvenli davran
-      }
-      return !data; // Eğer data varsa (zaten alınmış), false döner
+      const res = await fetch(`/api/db/username?username=${encodeURIComponent(username)}`);
+      if (!res.ok) throw new Error('Failed check');
+      const json = await res.json();
+      return !!json.isAvailable;
     } catch (error) {
+      console.error('Username check error:', error);
       return true;
     }
   },
 
   // --- BAN DURUMU KONTROLÜ ---
   checkBanStatus: async (userId: string): Promise<{ isBanned: boolean; expiresAt?: number; reason?: string; exists: boolean }> => {
-    if (!isSupabaseConfigured) return { isBanned: false, exists: true };
-
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('banned, banned_until, reason')
-        .eq('id', userId)
-        .maybeSingle();
-
-      if (error) throw error;
-      
-      // Profile deleted on Supabase
-      if (!data) return { isBanned: false, exists: false };
-
-      const now = new Date();
-      const bannedUntil = data.banned_until ? new Date(data.banned_until) : null;
-
-      // Mantık: 'banned' true ise VE (süresizse veya süresi henüz dolmadıysa)
-      const isCurrentlyBanned = data.banned && (!bannedUntil || bannedUntil > now);
-
-      return {
-        isBanned: isCurrentlyBanned,
-        expiresAt: bannedUntil ? bannedUntil.getTime() : undefined,
-        reason: data.reason || undefined,
-        exists: true
-      };
+      const res = await fetch(`/api/db/ban-status?userId=${encodeURIComponent(userId)}`);
+      if (!res.ok) throw new Error('Failed check');
+      const json = await res.json();
+      return json.status;
     } catch (error) {
       console.error('Ban status check failed:', error);
       return { isBanned: false, exists: true };
@@ -161,20 +88,15 @@ export const dbService = {
   },
 
   saveImage: async (userId: string, prompt: string, imageUrl: string) => {
-    if (!isSupabaseConfigured) return null;
     try {
-      const { data, error } = await supabase
-        .from('images')
-        .insert([
-          {
-            user_id: userId,
-            prompt: prompt,
-            url: imageUrl,
-            created_at: new Date().toISOString()
-          }
-        ]);
-      if (error) throw error;
-      return data;
+      const res = await fetch('/api/db/image', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, prompt, imageUrl })
+      });
+      if (!res.ok) throw new Error('Failed to save image');
+      const json = await res.json();
+      return json.data;
     } catch (error) {
       console.warn('Image persistence error:', error);
       return null;
@@ -182,20 +104,15 @@ export const dbService = {
   },
 
   saveVideo: async (userId: string, prompt: string, videoUrl: string) => {
-    if (!isSupabaseConfigured) return null;
     try {
-      const { data, error } = await supabase
-        .from('videos')
-        .insert([
-          {
-            user_id: userId,
-            prompt: prompt,
-            url: videoUrl,
-            created_at: new Date().toISOString()
-          }
-        ]);
-      if (error) throw error;
-      return data;
+      const res = await fetch('/api/db/video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, prompt, videoUrl })
+      });
+      if (!res.ok) throw new Error('Failed to save video');
+      const json = await res.json();
+      return json.data;
     } catch (error) {
       console.warn('Video persistence error:', error);
       return null;
@@ -205,15 +122,14 @@ export const dbService = {
 
 export const feedbackService = {
   send: async (userName: string, message: string) => {
-    if (!isSupabaseConfigured) {
-      console.warn("Supabase not configured. Simulating success.");
-      return { success: true };
-    }
     try {
-      const { data, error } = await supabase
-        .from('feedbacks')
-        .insert([{ user_name: userName, message: message }]);
-      if (error) throw error;
+      const res = await fetch('/api/db/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userName, message })
+      });
+      if (!res.ok) throw new Error('Failed to send feedback');
+      await res.json();
       return { success: true };
     } catch (error) {
       console.error('Feedback submission error:', error);

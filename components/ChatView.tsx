@@ -24,13 +24,20 @@ interface ChatViewProps {
   chat?: ChatSession;
   settings: SettingsState;
   user: User;
-  onUpdateMessages: (messages: Message[]) => void;
+  onUpdateMessages: (messages: Message[], chatId?: string) => void;
+  onCreateChatWithMessage?: (firstMessage: Message, title: string) => ChatSession;
+  onRenameChat?: (id: string, title: string) => void;
   onNewChat: () => void;
   onSaveImage?: (img: any) => void;
   onSetAnalysisContext?: (res: any) => void;
   points: number;
   spendPoints: (amount: number) => boolean;
 }
+
+// Benzersiz ID üretici fonksiyon (React key hatalarını kesin olarak çözer)
+const generateUUID = (prefix: string = 'id'): string => {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`;
+};
 
 const CodeBlock = ({ language, value }: { language: string; value: string }) => {
   const [copied, setCopied] = useState(false);
@@ -76,7 +83,7 @@ const CodeBlock = ({ language, value }: { language: string; value: string }) => 
 };
 
 const ChatView: React.FC<ChatViewProps> = ({ 
-  chat, settings, user, onUpdateMessages, onNewChat, onSaveImage, onSetAnalysisContext, points, spendPoints 
+  chat, settings, user, onUpdateMessages, onCreateChatWithMessage, onRenameChat, onNewChat, onSaveImage, onSetAnalysisContext, points, spendPoints 
 }) => {
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -88,6 +95,20 @@ const ChatView: React.FC<ChatViewProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isWebSearchActive, setIsWebSearchActive] = useState(settings.searchEnabled);
+
+  useEffect(() => {
+    setIsWebSearchActive(settings.searchEnabled);
+  }, [settings.searchEnabled]);
+
+  // Butonda anlık kaç coin düşeceğini hesaplayan yardımcı fonksiyon (Scope hatasını çözer)
+  const getCurrentRequiredPoints = (): number => {
+    const cleanInput = input.trim().toLowerCase();
+    if (cleanInput.startsWith('/image')) {
+      return 5;
+    }
+    return 1;
+  };
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -151,32 +172,80 @@ const ChatView: React.FC<ChatViewProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleSend = async () => {
+const handleSend = async () => {
     const cleanInput = input.trim();
     if ((!cleanInput && attachments.length === 0) || isTyping) return;
 
-    if (points < 1) {
-      setError("Yetersiz Puan! (Mesaj göndermek için 1 Coin gerekir)");
+    // 1. Rota Belirleme
+    let route = await aiService.routeRequest(cleanInput, attachments);
+
+    // 2. Türkçe doğal dil isteklerini ve komutları yakalama kontrolü
+    const lowerInput = cleanInput.toLowerCase();
+    const resimİstemi = lowerInput.startsWith('/image') || 
+                        lowerInput.includes('resim üret') || 
+                        lowerInput.includes('resmi üret') || 
+                        lowerInput.includes('görsel oluştur') ||
+                        lowerInput.includes('fotoğrafını çek');
+
+    const isImageRoute = route === 'IMAGE_CREATE' || resimİstemi;
+
+    // Web araması modu aktifse veya /search komutu verildiyse ve resim istenmediyse
+    if ((isWebSearchActive || lowerInput.startsWith('/search') || lowerInput.startsWith('/ara')) && !isImageRoute && attachments.length === 0) {
+      route = 'WEB_SEARCH';
+    }
+    const requiredPoints = isImageRoute ? 5 : 1;
+
+    if (points < requiredPoints) {
+      setError(`Yetersiz Puan! (Bu işlem için ${requiredPoints} Coin gerekir, mevcut puanınız: ${points})`);
       return;
     }
 
-    if (!chat) {
-        onNewChat();
-        return;
-    }
-
-    const route = await aiService.routeRequest(cleanInput, attachments);
+    // Kullanıcı mesajına tamamen benzersiz ID veriliyor
     const userMsg: Message = { 
-      id: Date.now().toString(), 
+      id: generateUUID('user-msg'), 
       role: 'user', 
       content: cleanInput, 
       timestamp: Date.now(), 
       attachments: [...attachments] 
     };
+
+    const formatTitle = (text: string): string => {
+      const clean = text
+        .replace(/^\/(image|search|web|link|video|img|çiz)\s*/i, '')
+        .replace(/[\r\n]+/g, ' ')
+        .trim();
+      if (!clean) return 'Yeni Sohbet';
+      return clean.length > 30 ? clean.slice(0, 30) + '...' : clean;
+    };
+
+    const firstMsgTitle = formatTitle(cleanInput || (attachments.length > 0 ? (attachments[0].name || 'Görsel Analizi') : 'Yeni Sohbet'));
+
+    let currentChatId: string;
+    let newMessages: Message[] = [];
+
+    if (!chat) {
+      if (onCreateChatWithMessage) {
+        const createdChat = onCreateChatWithMessage(userMsg, firstMsgTitle);
+        currentChatId = createdChat.id;
+        newMessages = [userMsg];
+      } else {
+        onNewChat();
+        return;
+      }
+    } else if (chat.messages.length === 0) {
+      currentChatId = chat.id;
+      newMessages = [userMsg];
+      if (onRenameChat) {
+        onRenameChat(chat.id, firstMsgTitle);
+      }
+      onUpdateMessages(newMessages, currentChatId);
+    } else {
+      currentChatId = chat.id;
+      newMessages = [...(chat.messages || []), userMsg];
+      onUpdateMessages(newMessages, currentChatId);
+    }
     
-    const newMessages = [...(chat.messages || []), userMsg];
-    onUpdateMessages(newMessages);
-    spendPoints(1);
+    spendPoints(requiredPoints);
     saveToSupabase(user.id, cleanInput, 'user').catch(e => console.debug(e));
 
     setInput('');
@@ -186,38 +255,77 @@ const ChatView: React.FC<ChatViewProps> = ({
 
     try {
       let responseText = "";
+      const baseAssistantId = generateUUID('assistant-msg');
+
       let assistantMsg: Message = { 
-        id: Date.now().toString(), 
+        id: baseAssistantId, 
         role: 'assistant', 
         content: '', 
         timestamp: Date.now() 
       };
 
-      if (route === 'IMAGE_CREATE') {
+      // 3. KULLANICI GÖRSEL İSTEDİYSE (Kesin Tetiklenme)
+      if (isImageRoute) {
         assistantMsg.isGenerating = true;
         assistantMsg.generationType = 'image';
-        onUpdateMessages([...newMessages, assistantMsg]);
-        const url = await aiService.generateImage(cleanInput.replace(/^\/image\s*/i, ''));
-        onUpdateMessages([...newMessages, { ...assistantMsg, isGenerating: false, imageUrl: url }]);
+        onUpdateMessages([...newMessages, assistantMsg], currentChatId);
+        
+        // Temiz prompt oluşturma (Komutları ve Türkçe ekleri temizler)
+        let imagePrompt = cleanInput
+          .replace(/^\/image\s*/i, '')
+          .replace(/^\/çiz\s*/i, '')
+          .replace(/^\/img\s*/i, '')
+          .replace(/bana bir resim yap/gi, '')
+          .replace(/bana bir görsel oluştur/gi, '')
+          .replace(/bana bir resim çiz/gi, '')
+          .replace(/görseli oluştur/gi, '')
+          .replace(/görsel oluştur/gi, '')
+          .replace(/görsel üret/gi, '')
+          .replace(/resmi üret/gi, '')
+          .replace(/resim üret/gi, '')
+          .replace(/resim yap/gi, '')
+          .replace(/resim çiz/gi, '')
+          .replace(/fotoğrafını çek/gi, '')
+          .replace(/fotoğraf üret/gi, '')
+          .trim();
+
+        const url = await aiService.generateImage(imagePrompt || "İstanbul boğazı gün batımı manzarası");
+        
+        onUpdateMessages([...newMessages, { 
+          ...assistantMsg, 
+          id: generateUUID('final-image'),
+          isGenerating: false, 
+          content: `🎨 "${imagePrompt || 'Görsel'}" istemi için görsel başarıyla üretildi.`,
+          imageUrl: url 
+        }], currentChatId);
         
         if (onSaveImage) {
           onSaveImage({
-            id: Date.now().toString(),
-            prompt: cleanInput,
+            id: generateUUID('save-img'),
+            prompt: imagePrompt || cleanInput,
             url: url,
             timestamp: Date.now()
           });
         }
 
-        dbService.saveImage(user.id, cleanInput, url).catch(e => console.debug(e));
+        dbService.saveImage(user.id, imagePrompt || cleanInput, url).catch(e => console.debug(e));
         return;
       } 
       
+      // 4. DİĞER ANALİZ VE ARAMA ROTALARI
       if (route === 'IMAGE_ANALYZE' || route === 'VIDEO_ANALYZE') {
-        setStreamingMessage("Analyzing visual content...");
+        setStreamingMessage("Görsel içerik analiz ediliyor...");
         const result = await aiService.analyzeVision(cleanInput, attachments);
         if (onSetAnalysisContext) onSetAnalysisContext({ type: 'vision', data: result, timestamp: Date.now() });
-        responseText = `### Analysis Results\n\n${result.analysis}\n\n**Design Observations:**\n- ${result.designObservations.join('\n- ')}\n\n**Suggested Improvements:**\n- ${result.suggestedImprovements.join('\n- ')}`;
+        
+        const designPart = result.designObservations && result.designObservations.length > 0 
+          ? `\n\n**Tasarım & Detay Gözlemleri:**\n- ${result.designObservations.join('\n- ')}` 
+          : '';
+        const improvePart = result.suggestedImprovements && result.suggestedImprovements.length > 0 
+          ? `\n\n**Öneriler & Düzen:**\n- ${result.suggestedImprovements.join('\n- ')}` 
+          : '';
+
+        responseText = `### 🔍 Görsel Analiz Sonucu\n\n${result.analysis}${designPart}${improvePart}`;
       } 
       else if (route === 'LINK_ANALYZE') {
         const url = cleanInput.match(/(https?:\/\/[^\s]+)/g)?.[0] || "";
@@ -234,15 +342,20 @@ const ChatView: React.FC<ChatViewProps> = ({
         responseText = `### YouTube Analysis\n\n${result.summary}\n\n**Key Takeaways:**\n- ${result.keyTakeaways.join('\n- ')}\n\n**Landing Page Concept:**\n- **Title:** ${result.landingPageConcept.title}\n- **Hero:** ${result.landingPageConcept.heroText}`;
       }
       else if (route === 'WEB_SEARCH') {
-        setStreamingMessage("Searching the web for latest info...");
-        const result = await aiService.webSearch(cleanInput.replace(/^\/search\s*/i, ''));
-        responseText = `### Web Search Results\n\n${result.summary}\n\n**Sources:**\n${result.sources.map((s: any) => `- [${s.title}](${s.url})`).join('\n')}`;
+        const searchQuery = cleanInput.replace(/^\/(search|ara)\s*/i, '');
+        setStreamingMessage(`"${searchQuery}" için web taranıyor...`);
+        const result = await aiService.webSearch(searchQuery);
+        const sourcesText = result.sources && result.sources.length > 0 
+          ? `\n\n**🌐 Doğrulanmış Kaynaklar:**\n${result.sources.map((s: any) => `- [${s.title || s.url}](${s.url})`).join('\n')}`
+          : '';
+        responseText = `### 🔍 Canlı Web Arama Sonuçları: "${searchQuery}"\n\n${result.summary}${sourcesText}`;
       }
       else if (route === 'WEB_BUILD_CREATE') {
         setStreamingMessage("Drafting website structure...");
         const result = await aiService.generateWebsite(cleanInput.replace(/^\/web\s*/i, ''));
         responseText = `### Web Siteniz Hazırlandı! 🚀\n\n**Başlık:** ${result.title}\n**Açıklama:** ${result.description}\n\n**Oluşturulan Bölümler:**\n${result.sections.map((s: any) => `- **${s.name}**: ${s.content}`).join('\n')}\n\nWeb sitenizin tam kodunu görmek ve düzenlemek için sol menüden **"Web Builder"** sekmesine gidebilirsiniz.`;
       }
+      // 5. NORMAL SOHBET MODU
       else {
         responseText = await aiService.generateText(
           cleanInput, 
@@ -253,39 +366,15 @@ const ChatView: React.FC<ChatViewProps> = ({
       }
 
       if (responseText) {
-        const genMatch = responseText.match(/\[GENERATE:\s*(\w+),\s*(.*?)\]/i);
-        
-        if (genMatch) {
-          const type = genMatch[1].toUpperCase();
-          const prompt = genMatch[2];
-          
-          if (type === 'IMAGE') {
-            const url = await aiService.generateImage(prompt);
-            onUpdateMessages([...newMessages, { 
-              ...assistantMsg, 
-              content: responseText.replace(genMatch[0], ''), 
-              imageUrl: url 
-            }]);
-            return;
-          }
-          
-          if (type === 'WEBSITE') {
-            window.dispatchEvent(new CustomEvent('generate-website-section', { 
-              detail: { type: 'General', prompt } 
-            }));
-            onUpdateMessages([...newMessages, { 
-              ...assistantMsg, 
-              content: responseText.replace(genMatch[0], '') + "\n\n🚀 **Web Builder** modülüne bir bölüm eklendi! Sol menüden kontrol edebilirsiniz.", 
-            }]);
-            return;
-          }
-        }
+        // Yapay zekanın uydurduğu tüm sahte [GENERATE: ...] etiketlerini temizle
+        const cleanResponseText = responseText.replace(/\[GENERATE:\s*\w+,\s*.*?\]/gi, '').trim();
 
         onUpdateMessages([...newMessages, { 
           ...assistantMsg,
-          content: responseText, 
-        }]);
-        saveToSupabase(user.id, responseText, 'assistant').catch(e => console.debug(e));
+          id: generateUUID('final-assistant'),
+          content: cleanResponseText, 
+        }], currentChatId);
+        saveToSupabase(user.id, cleanResponseText, 'assistant').catch(e => console.debug(e));
       }
 
     } catch (err: any) {
@@ -332,7 +421,7 @@ const ChatView: React.FC<ChatViewProps> = ({
       </header>
 
       <div ref={scrollRef} className="relative z-10 flex-1 overflow-y-auto px-4 md:px-10 py-6 space-y-6 custom-scrollbar">
-        {!chat && (
+        {(!chat || chat.messages.length === 0) && (
           <div className="w-full max-w-4xl mx-auto text-center py-20 space-y-12">
             <div className="relative inline-block">
               <Logo size={160} className="mx-auto opacity-30 animate-pulse" />
@@ -357,7 +446,7 @@ const ChatView: React.FC<ChatViewProps> = ({
               ].map((starter, i) => (
                 <button 
                   key={i}
-                  onClick={() => { onNewChat(); setInput(starter.cmd); }}
+                  onClick={() => { setInput(starter.cmd); if (textareaRef.current) textareaRef.current.focus(); }}
                   className="flex items-center gap-4 p-6 rounded-[2rem] glass-panel border border-white/5 hover:bg-white/10 transition-all text-left group"
                 >
                   <div className="w-12 h-12 rounded-2xl bg-blue-600/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
@@ -368,7 +457,7 @@ const ChatView: React.FC<ChatViewProps> = ({
               ))}
             </div>
 
-            <button onClick={onNewChat} className="px-12 py-5 rounded-full bg-blue-600 text-white font-black text-xl shadow-2xl hover:scale-105 transition-transform">
+            <button onClick={() => { if (textareaRef.current) textareaRef.current.focus(); }} className="px-12 py-5 rounded-full bg-blue-600 text-white font-black text-xl shadow-2xl hover:scale-105 transition-transform">
               {t.init}
             </button>
           </div>
@@ -383,6 +472,26 @@ const ChatView: React.FC<ChatViewProps> = ({
             <div className={`flex flex-col space-y-3 w-full ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
               {msg.isGenerating && <GenerationAnimation type={msg.generationType || 'image'} />}
               
+              {/* Kullanıcının yüklediği görsel / video ekleri */}
+              {msg.attachments && msg.attachments.length > 0 && (
+                <div className="flex flex-wrap gap-2 max-w-md">
+                  {msg.attachments.map((att, idx) => (
+                    att.type === 'image' ? (
+                      <img 
+                        key={idx}
+                        src={att.data.startsWith('data:') ? att.data : `data:${att.mimeType || 'image/jpeg'};base64,${att.data}`}
+                        alt={att.name || "Yüklenen görsel"}
+                        className="max-h-56 rounded-2xl border border-white/20 shadow-lg object-cover"
+                      />
+                    ) : (
+                      <div key={idx} className="px-3 py-1.5 rounded-xl bg-white/10 text-xs text-slate-200 border border-white/10 flex items-center gap-1.5">
+                        <span>📎 {att.name || "Dosya"}</span>
+                      </div>
+                    )
+                  ))}
+                </div>
+              )}
+
               {msg.imageUrl && (
                 <img 
                   src={msg.imageUrl} 
@@ -526,13 +635,27 @@ const ChatView: React.FC<ChatViewProps> = ({
               className="w-full bg-transparent border-none focus:ring-0 p-4 text-white text-lg md:text-2xl placeholder-slate-700 resize-none custom-scrollbar" 
             />
             <div className="flex items-center justify-between px-4 py-2 border-t border-white/5">
-              <div className="flex gap-2">
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-500 hover:text-blue-400 transition-colors"><Paperclip size={20}/></button>
-                <button onClick={startSpeechRecognition} className={`p-2 transition-colors ${isListening ? 'text-red-500 animate-pulse' : 'text-slate-500 hover:text-blue-400'}`}><Mic size={20} /></button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => fileInputRef.current?.click()} className="p-2 text-slate-500 hover:text-blue-400 transition-colors" title="Dosya Ekle"><Paperclip size={20}/></button>
+                <button onClick={startSpeechRecognition} className={`p-2 transition-colors ${isListening ? 'text-red-500 animate-pulse' : 'text-slate-500 hover:text-blue-400'}`} title="Sesle Yaz"><Mic size={20} /></button>
+                <button 
+                  onClick={() => setIsWebSearchActive(!isWebSearchActive)} 
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all ${
+                    isWebSearchActive 
+                      ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300 shadow-[0_0_12px_rgba(16,185,129,0.25)]' 
+                      : 'bg-white/5 border-white/5 text-slate-500 hover:text-slate-300'
+                  }`}
+                  title={isWebSearchActive ? "Web'den Canlı Arama Aktif" : "Web'den Canlı Aramayı Etkinleştir"}
+                >
+                  <Globe size={16} className={isWebSearchActive ? 'text-emerald-400 animate-pulse' : ''} />
+                  <span className="hidden sm:inline text-[10px] font-black uppercase tracking-wider">
+                    {isWebSearchActive ? 'Web Arama Açık' : 'Web Arama'}
+                  </span>
+                </button>
               </div>
               <button onClick={handleSend} disabled={isTyping} className="w-12 h-12 md:w-16 md:h-16 rounded-2xl bg-blue-600 text-white flex flex-col items-center justify-center shadow-2xl hover:scale-105 transition-transform disabled:opacity-50">
                 {isTyping ? <Loader2 className="animate-spin" /> : <Send size={20} />}
-                {!isTyping && <span className="text-[8px] font-black mt-1 opacity-70">-1</span>}
+                {!isTyping && <span className="text-[8px] font-black mt-1 opacity-70">-{getCurrentRequiredPoints()}</span>}
               </button>
             </div>
           </div>

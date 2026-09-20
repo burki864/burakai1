@@ -20,7 +20,19 @@ export interface User {
   profile?: UserProfile;
 }
 
-export type ThemeType = 'default' | 'rain' | 'desert' | 'nebula' | 'cyberpunk' | 'snow';
+export type ThemeType = 
+  | 'default' 
+  | 'snow' 
+  | 'rain' 
+  | 'autumn' 
+  | 'fireflies' 
+  | 'matrix' 
+  | 'stars' 
+  | 'sakura' 
+  | 'ocean' 
+  | 'nebula' 
+  | 'cyberpunk' 
+  | 'desert';
 export type AppView = 'chat' | 'images' | 'video-studio' | 'settings' | 'downloads' | 'web-builder' | 'music-studio' | 'stars';
 
 export interface AnalysisResult {

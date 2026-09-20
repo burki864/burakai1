@@ -69,27 +69,38 @@ export class AIService {
    * Görsel/Video Analizi Yapar (Vision)
    */
   async analyzeVision(prompt: string, attachments: Attachment[]): Promise<any> {
-    const image = attachments.find(a => a.type === 'image')?.data;
-    const frames = attachments.filter(a => a.type === 'video').map(a => a.data);
+    const imgAtt = attachments.find(a => a.type === 'image');
+    const image = imgAtt 
+      ? (imgAtt.data.startsWith('data:') ? imgAtt.data : `data:${imgAtt.mimeType || 'image/jpeg'};base64,${imgAtt.data}`) 
+      : null;
+    const frames = attachments
+      .filter(a => a.type === 'video')
+      .map(a => a.data.startsWith('data:') ? a.data : `data:${a.mimeType || 'image/jpeg'};base64,${a.data}`);
 
     const response = await fetch(API_ENDPOINTS.VISION, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ 
         prompt, 
-        image: image ? `data:image/jpeg;base64,${image}` : null,
-        frames: frames.map(f => `data:image/jpeg;base64,${f}`)
+        image,
+        frames
       })
     });
 
-    if (!response.ok) throw new Error("Analiz başarısız.");
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || "Görsel analizi başarısız.");
+    }
     const data = await response.json();
     
-    // UI'ın beklediği formata dönüştür
+    const analysisObj = data.analysis || {};
     return {
-      analysis: data.analysis.summary || data.analysis.technical_details,
-      designObservations: [data.analysis.design_language, ...data.analysis.components],
-      suggestedImprovements: [data.analysis.layout]
+      analysis: analysisObj.summary || analysisObj.technical_details || "Analiz tamamlandı.",
+      designObservations: [
+        ...(analysisObj.design_language ? [analysisObj.design_language] : []),
+        ...(Array.isArray(analysisObj.components) ? analysisObj.components : [])
+      ],
+      suggestedImprovements: analysisObj.layout ? [analysisObj.layout] : []
     };
   }
 
@@ -187,20 +198,37 @@ export class AIService {
    * İstek Yönlendirici (Intent Router)
    */
   async routeRequest(input: string, attachments: Attachment[]): Promise<string> {
-    const lower = input.toLowerCase();
+    const lower = input.toLowerCase().trim();
     
     // Attachment önceliği
-    if (attachments.some(a => a.type === 'image')) return 'IMAGE_ANALYZE';
-    if (attachments.some(a => a.type === 'video')) return 'VIDEO_ANALYZE';
+    if (attachments && attachments.length > 0) {
+      if (attachments.some(a => a.type === 'image')) return 'IMAGE_ANALYZE';
+      if (attachments.some(a => a.type === 'video')) return 'VIDEO_ANALYZE';
+    }
     
     // URL önceliği
     if (lower.includes('youtube.com') || lower.includes('youtu.be')) return 'YOUTUBE_ANALYZE';
     if (lower.includes('http://') || lower.includes('https://')) return 'LINK_ANALYZE';
 
     // Komut ve anahtar kelime eşleşmesi
-    if (lower.startsWith('/image') || lower.includes('görsel oluştur') || lower.includes('resim yap') || lower.includes('çiz')) return 'IMAGE_CREATE';
-    if (lower.startsWith('/web') || lower.includes('site kur') || lower.includes('web sitesi yap')) return 'WEB_BUILD_CREATE';
-    if (lower.startsWith('/search') || lower.includes('ara') || lower.includes('kimdir') || lower.includes('nedir')) return 'WEB_SEARCH';
+    if (
+      lower.startsWith('/image') || 
+      lower.startsWith('/çiz') ||
+      lower.startsWith('/img') ||
+      lower.includes('görsel oluştur') || 
+      lower.includes('görsel üret') || 
+      lower.includes('resim yap') || 
+      lower.includes('resim üret') || 
+      lower.includes('resmi üret') ||
+      lower.includes('resim çiz') ||
+      lower.includes('fotoğraf üret') ||
+      lower.includes('fotoğrafını çek') ||
+      lower.includes('bana bir resim') ||
+      lower.includes('bana bir görsel')
+    ) return 'IMAGE_CREATE';
+
+    if (lower.startsWith('/web') || lower.startsWith('/build-web') || lower.includes('site kur') || lower.includes('web sitesi yap') || lower.includes('web sitesi oluştur')) return 'WEB_BUILD_CREATE';
+    if (lower.startsWith('/search') || lower.includes('internette ara') || lower.includes('webde ara')) return 'WEB_SEARCH';
     
     return 'CHAT';
   }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, ChatSession, SettingsState, ImageGeneration, ThemeType, AppView } from './types';
+import { User, ChatSession, Message, SettingsState, ImageGeneration, ThemeType, AppView } from './types';
 import { storageService } from './services/storageService';
 import { dbService } from './services/supabase'; 
 import Auth from './components/Auth';
@@ -13,6 +13,7 @@ import Downloads from './components/Downloads';
 import BannedScreen from './components/BannedScreen';
 import MouseGlow from './components/MouseGlow';
 import IntroAnimation from './components/IntroAnimation';
+import BackgroundTheme from './components/BackgroundTheme';
 import { Menu, X, Coins, Star } from 'lucide-react';
 import { usePoints, COST_IMAGE } from './hooks/usePoints';
 import StarExplosion from './components/StarExplosion';
@@ -76,11 +77,17 @@ const App: React.FC = () => {
   useEffect(() => {
     const themeColors: Record<ThemeType, { primary: string; secondary: string; glow: string }> = {
       default: { primary: '#3b82f6', secondary: '#a855f7', glow: 'rgba(59, 130, 246, 0.5)' },
-      rain: { primary: '#22d3ee', secondary: '#3b82f6', glow: 'rgba(34, 211, 238, 0.5)' },
-      desert: { primary: '#f97316', secondary: '#fbbf24', glow: 'rgba(249, 115, 22, 0.5)' },
+      snow: { primary: '#38bdf8', secondary: '#e2e8f0', glow: 'rgba(56, 189, 248, 0.5)' },
+      rain: { primary: '#06b6d4', secondary: '#2563eb', glow: 'rgba(6, 182, 212, 0.5)' },
+      autumn: { primary: '#f97316', secondary: '#ea580c', glow: 'rgba(249, 115, 22, 0.5)' },
+      fireflies: { primary: '#10b981', secondary: '#eab308', glow: 'rgba(16, 185, 129, 0.5)' },
+      matrix: { primary: '#22c55e', secondary: '#4ade80', glow: 'rgba(34, 197, 94, 0.5)' },
+      stars: { primary: '#6366f1', secondary: '#8b5cf6', glow: 'rgba(99, 102, 241, 0.5)' },
+      sakura: { primary: '#f472b6', secondary: '#fb7185', glow: 'rgba(244, 114, 182, 0.5)' },
+      ocean: { primary: '#0284c7', secondary: '#06b6d4', glow: 'rgba(2, 132, 199, 0.5)' },
       nebula: { primary: '#a855f7', secondary: '#ec4899', glow: 'rgba(168, 85, 247, 0.5)' },
       cyberpunk: { primary: '#06b6d4', secondary: '#f472b6', glow: 'rgba(6, 182, 212, 0.5)' },
-      snow: { primary: '#94a3b8', secondary: '#cbd5e1', glow: 'rgba(148, 163, 184, 0.5)' },
+      desert: { primary: '#f97316', secondary: '#fbbf24', glow: 'rgba(249, 115, 22, 0.5)' },
     };
 
     const colors = themeColors[settings.activeTheme] || themeColors.default;
@@ -105,11 +112,38 @@ const App: React.FC = () => {
   };
 
   const createNewChat = () => {
-    const newChat: ChatSession = { id: Date.now().toString(), title: 'New Neural Link', messages: [], createdAt: Date.now() };
-    setChats(prev => [newChat, ...prev]);
-    setActiveChatId(newChat.id);
+    setActiveChatId(null);
     setView('chat');
     setIsSidebarOpen(false);
+  };
+
+  const handleCreateChatWithMessage = (firstMsg: Message, title: string): ChatSession => {
+    const newChat: ChatSession = {
+      id: Date.now().toString(),
+      title: title || 'Yeni Sohbet',
+      messages: [firstMsg],
+      createdAt: Date.now()
+    };
+    setChats(prev => [newChat, ...prev]);
+    setActiveChatId(newChat.id);
+    return newChat;
+  };
+
+  const handleUpdateMessages = (msgs: Message[], targetChatId?: string) => {
+    const id = targetChatId || activeChatId;
+    if (!id) return;
+    setChats(prev => prev.map(c => c.id === id ? { ...c, messages: msgs } : c));
+  };
+
+  const handleRenameChat = (id: string, title: string) => {
+    setChats(prev => prev.map(c => c.id === id ? { ...c, title } : c));
+  };
+
+  const handleDeleteChat = (id: string) => {
+    setChats(prev => prev.filter(c => c.id !== id));
+    if (activeChatId === id) {
+      setActiveChatId(null);
+    }
   };
 
   // Güvenlik katmanı: Banlıysa her şeyi durdur ve ekranı göster
@@ -153,18 +187,27 @@ const App: React.FC = () => {
 
       <div className={`fixed inset-y-0 left-0 z-50 md:relative transform transition-transform duration-500 ease-in-out ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 shadow-2xl md:shadow-none`}>
         <Sidebar 
-            chats={chats} activeChatId={activeChatId} 
+            chats={chats} 
+            activeChatId={activeChatId} 
             onSelectChat={(id) => { setActiveChatId(id); setView('chat'); setIsSidebarOpen(false); }}
-            onNewChat={createNewChat} onDeleteChat={(id) => setChats(p => p.filter(c => c.id !== id))}
-            onRenameChat={(id, title) => setChats(p => p.map(c => c.id === id ? { ...c, title } : c))}
-            currentView={view} onViewChange={(v) => { setView(v as any); setIsSidebarOpen(false); }}
-            user={user} onLogout={handleLogout} settings={settings}
+            onNewChat={createNewChat} 
+            onDeleteChat={handleDeleteChat}
+            onRenameChat={handleRenameChat}
+            currentView={view} 
+            onViewChange={(v) => { setView(v as any); setIsSidebarOpen(false); }}
+            user={user} 
+            onLogout={handleLogout} 
+            settings={settings}
         />
       </div>
       
       {isSidebarOpen && <div onClick={() => setIsSidebarOpen(false)} className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40 md:hidden animate-in fade-in duration-300" />}
 
       <main className="flex-1 flex flex-col relative overflow-hidden h-full">
+        {/* Canlı Atmosferik Tema Katmanı */}
+        <div className="absolute inset-0 pointer-events-none z-0">
+          <BackgroundTheme theme={settings.activeTheme} />
+        </div>
         <AnimatePresence mode="wait">
           {!showIntro && (
             <MotionDiv
@@ -180,7 +223,9 @@ const App: React.FC = () => {
                   chat={activeChat} 
                   settings={settings} 
                   user={user} 
-                  onUpdateMessages={(msgs) => activeChatId && setChats(p => p.map(c => c.id === activeChatId ? { ...c, messages: msgs } : c))} 
+                  onUpdateMessages={handleUpdateMessages}
+                  onCreateChatWithMessage={handleCreateChatWithMessage}
+                  onRenameChat={handleRenameChat}
                   onNewChat={createNewChat}
                   onSaveImage={(img) => setImages(p => [img, ...p])}
                   onSetAnalysisContext={(res) => setAnalysisContext(p => [...p, res])}

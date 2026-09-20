@@ -6,12 +6,51 @@ import axios from "axios";
 import { GoogleGenAI } from "@google/genai";
 import { groq, MODELS } from "./lib/groq.js";
 import { smartChatRouter } from "./lib/router.js";
+import {
+  createProfileInDb,
+  updateProfileInDb,
+  checkUsernameInDb,
+  checkBanStatusInDb,
+  sendMessageInDb,
+  saveImageInDb,
+  saveVideoInDb,
+  sendFeedbackInDb,
+  banUserInDb,
+  unbanUserInDb
+} from "./lib/db.js";
 
 // In-memory store for async requests (Polling logic)
 const asyncRequests = new Map<string, { status: string; url?: string; error?: string; duration?: string }>();
 
-// Initialize Gemini for Website Builder
+// Initialize Gemini for Website Builder and AI modules with robust fallback
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+
+const GEMINI_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.5-pro",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+  "gemini-3.7-flash"
+];
+
+async function generateGeminiContent(params: { contents: any[]; config?: any }) {
+  let lastError: any = null;
+  for (const model of GEMINI_MODELS) {
+    try {
+      const res = await ai.models.generateContent({
+        model,
+        contents: params.contents,
+        config: params.config
+      });
+      return res;
+    } catch (err: any) {
+      console.warn(`⚠️ Gemini ${model} error:`, err.message || err);
+      lastError = err;
+      continue;
+    }
+  }
+  throw lastError || new Error("All Gemini models temporarily unavailable");
+}
 
 async function startServer() {
   const app = express();
@@ -35,6 +74,147 @@ async function startServer() {
       }
     })
   );
+
+  // --- Aiven Database Proxy Endpoints ---
+  app.post("/api/db/profile", async (req, res) => {
+    try {
+      const { user } = req.body;
+      if (!user || !user.id || !user.name) {
+        return res.status(400).json({ error: "Invalid user data supplied" });
+      }
+      const data = await createProfileInDb(user.id, user.name, user.email || "");
+      res.status(200).json({ data, success: true });
+    } catch (err: any) {
+      console.error("Backend DB: create profile error", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.put("/api/db/profile", async (req, res) => {
+    try {
+      const { id, updates } = req.body;
+      if (!id) {
+        return res.status(400).json({ error: "Missing user id" });
+      }
+      const data = await updateProfileInDb(id, updates?.username, updates?.avatar_url);
+      res.status(200).json({ data, success: true });
+    } catch (err: any) {
+      console.error("Backend DB: update profile error", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/db/username", async (req, res) => {
+    try {
+      const { username } = req.query;
+      if (!username) {
+        return res.status(400).json({ error: "Missing username parameter" });
+      }
+      const isAvailable = await checkUsernameInDb(String(username));
+      res.status(200).json({ isAvailable, success: true });
+    } catch (err: any) {
+      console.error("Backend DB: check username error", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/db/ban-status", async (req, res) => {
+    try {
+      const { userId } = req.query;
+      if (!userId) {
+        return res.status(400).json({ error: "Missing userId parameter" });
+      }
+      const status = await checkBanStatusInDb(String(userId));
+      res.status(200).json({ status, success: true });
+    } catch (err: any) {
+      console.error("Backend DB: check ban status error", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/db/message", async (req, res) => {
+    try {
+      const { userId, text, role } = req.body;
+      if (!userId || !text) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      const data = await sendMessageInDb(userId, text, role || 'user');
+      res.status(200).json({ data, success: true });
+    } catch (err: any) {
+      console.error("Backend DB: send message error", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/db/image", async (req, res) => {
+    try {
+      const { userId, prompt, imageUrl } = req.body;
+      if (!userId || !prompt || !imageUrl) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      const data = await saveImageInDb(userId, prompt, imageUrl);
+      res.status(200).json({ data, success: true });
+    } catch (err: any) {
+      console.error("Backend DB: save image error", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/db/video", async (req, res) => {
+    try {
+      const { userId, prompt, videoUrl } = req.body;
+      if (!userId || !prompt || !videoUrl) {
+        return res.status(400).json({ error: "Missing required fields" });
+      }
+      const data = await saveVideoInDb(userId, prompt, videoUrl);
+      res.status(200).json({ data, success: true });
+    } catch (err: any) {
+      console.error("Backend DB: save video error", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/db/feedback", async (req, res) => {
+    try {
+      const { userName, message } = req.body;
+      if (!message) {
+        return res.status(400).json({ error: "Missing feedback message" });
+      }
+      const result = await sendFeedbackInDb(userName || "Anonym", message);
+      res.status(200).json({ result, success: true });
+    } catch (err: any) {
+      console.error("Backend DB: save feedback error", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/db/admin/ban", async (req, res) => {
+    try {
+      const { adminId, targetUserId, reason, durationHours } = req.body;
+      if (!adminId || !targetUserId) {
+        return res.status(400).json({ error: "Missing required identifiers" });
+      }
+      const result = await banUserInDb(adminId, targetUserId, reason || "", Number(durationHours) || 24);
+      res.status(200).json({ result, success: true });
+    } catch (err: any) {
+      console.error("Backend DB: admin ban error", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/db/admin/unban", async (req, res) => {
+    try {
+      const { adminId, targetUserId } = req.body;
+      if (!adminId || !targetUserId) {
+        return res.status(400).json({ error: "Missing required identifiers" });
+      }
+      const result = await unbanUserInDb(adminId, targetUserId);
+      res.status(200).json({ result, success: true });
+    } catch (err: any) {
+      console.error("Backend DB: admin unban error", err);
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // 3. Local API routes
   app.post("/api/chat", async (req, res) => {
@@ -92,39 +272,59 @@ async function startServer() {
     }
   });
 
-  // AI Image Generator (Pollinations.ai)
+  // AI Image Generator (Pollinations.ai + Gemini Prompt Optimization)
   app.post("/api/generate-image", async (req, res) => {
     try {
       const { prompt } = req.body;
       if (!prompt) return res.status(400).json({ error: "No prompt provided" });
 
-      console.log("Enriching prompt with Groq...");
+      console.log("Enriching prompt for image generation:", prompt);
       let enrichedPrompt = prompt;
-      
+
+      // 1. Gemini ile promptu zenginleştir (Türkçe ise İngilizceye çevirir ve Flux için optimize eder)
       try {
-        if (groq) {
-          const completion = await groq.chat.completions.create({
-            messages: [
-              { 
-                role: "system", 
-                content: "You are an expert prompt engineer. Enrich the user's image prompt to be highly detailed, artistic, and optimized for Flux.1. Keep it concise but descriptive. Output ONLY the enriched prompt." 
-              },
-              { role: "user", content: prompt }
-            ],
-            model: MODELS.FAST,
-            temperature: 0.4 // Aşırı kaymaları önlemek için sıcaklık dengelendi
-          });
-          enrichedPrompt = completion.choices[0]?.message?.content || prompt;
+        const promptRes = await generateGeminiContent({
+          contents: [{ parts: [{ text: `You are an expert prompt engineer for Flux.1 AI image generation.
+The user wants to generate an image. Translate the prompt to English if it is in another language (e.g. Turkish), and expand it into a detailed, photorealistic, cinematic prompt with lighting, texture, style and mood.
+Output ONLY the prompt text, no quotes, no markdown, no conversational filler.
+
+User input: "${prompt}"` }] }],
+          config: {
+            temperature: 0.7,
+            maxOutputTokens: 200,
+          }
+        });
+        const generated = promptRes.text?.trim();
+        if (generated && generated.length > 5) {
+          enrichedPrompt = generated;
         }
-      } catch (groqError) {
-        console.warn("Groq Optimization Error (using original prompt):", groqError);
+      } catch (geminiErr) {
+        console.warn("Gemini prompt enrichment error, trying Groq fallback:", geminiErr);
+        if (groq) {
+          try {
+            const completion = await groq.chat.completions.create({
+              messages: [
+                { 
+                  role: "system", 
+                  content: "You are an expert prompt engineer. Translate user prompt to English if needed and enrich it for Flux.1. Output ONLY the enriched prompt." 
+                },
+                { role: "user", content: prompt }
+              ],
+              model: MODELS.FAST,
+              temperature: 0.4
+            });
+            enrichedPrompt = completion.choices[0]?.message?.content || prompt;
+          } catch (groqError) {
+            console.warn("Groq optimization error (using original prompt):", groqError);
+          }
+        }
       }
 
-      console.log("Enriched Prompt:", enrichedPrompt);
+      console.log("Final Enriched Prompt:", enrichedPrompt);
 
       const seed = Math.floor(Math.random() * 1000000);
       const safePrompt = encodeURIComponent(enrichedPrompt);
-      const imageUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=1280&height=720&model=flux&nologo=true&seed=${seed}&enhance=true`;
+      const imageUrl = `https://image.pollinations.ai/prompt/${safePrompt}?width=1024&height=1024&model=flux&nologo=true&seed=${seed}&enhance=true`;
 
       return res.status(200).json({ 
         url: imageUrl,
@@ -163,13 +363,11 @@ async function startServer() {
         Output format: Just the HTML string.
       `;
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+      const response = await generateGeminiContent({
         contents: [{ parts: [{ text: systemPrompt }] }],
       });
 
-      const code = response.text?.replace(/```html|
-```/g, '').trim();
+      const code = response.text?.replace(/```html|```/g, '').trim();
       res.json({ code });
     } catch (error: any) {
       console.error('Section Generation Error:', error);
@@ -179,57 +377,50 @@ async function startServer() {
 
   // AI Website Builder (B-UILDER)
   app.post("/api/generate-website", async (req, res) => {
-    if (!groq) return res.status(500).json({ error: "Groq not initialized" });
-
     const { prompt, style = 'Modern' } = req.body;
+
+    const systemPrompt = `You are "B-uilder Architecture", an AI that builds premium websites with React-like state management using Alpine.js and Tailwind CSS.
+    ### 🧠 ARCHITECTURAL RULES:
+    1. **STATE ENGINE**: Every site MUST start with a global 'x-data' object on the body (e.g. <body x-data="{ cartCount: 0, isMenuOpen: false, activeTab: 'all' }" class="bg-[#030712] text-white">).
+    2. **REACTIVE BUTTONS**: Buttons must use Alpine.js directives (x-on:click, x-show, x-transition).
+    3. **DYNAMIC COMPONENTS**: Use x-text, x-bind:class.
+    4. **2026 DESIGN**: Bento-Grid (grid-cols-12), Glassmorphism (backdrop-blur-xl, bg-white/5, border-white/10), Inter typography, Unsplash images.
+    5. **STACK**:
+       - Tailwind CSS: <script src="https://cdn.tailwindcss.com"></script>
+       - Alpine.js: <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+       - AOS: <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet"><script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+    6. **OUTPUT**: Output ONLY valid, raw HTML starting with <!DOCTYPE html>. No markdown code blocks, just raw HTML.`;
 
     try {
       console.log(`Building website with style: ${style}...`);
-      
-      const completion = await groq.chat.completions.create({
-        messages: [
-          {
-            role: "system",
-            content: `You are "B-uilder Architecture", an AI that builds premium websites with React-like state management using Alpine.js.
-            
-            ### 🧠 ARCHITECTURAL RULES (FOR FUNCTIONALITY):
-            1. **STATE ENGINE**: Every site MUST start with a global 'x-data' object on the body. 
-               - Example: <body x-data="{ cartCount: 0, isMenuOpen: false, activeTab: 'all' }" class="bg-[#030712] text-white">
-            2. **REACTIVE BUTTONS**: Buttons must not be empty. Use Alpine.js directives:
-               - Add to Cart: 'x-on:click="cartCount++"'
-               - Toggle Menu: 'x-on:click="isMenuOpen = !isMenuOpen"'
-               - Transitions: Use 'x-show' with 'x-transition' for smooth opening/closing.
-            3. **DYNAMIC COMPONENTS**: 
-               - Use 'x-text="cartCount"' to show live updates.
-               - Use 'x-bind:class' to change styles based on state (e.g., active button color).
+      let code = "";
 
-            ### 🎨 2026 DESIGN (PREMIUM LOOK):
-            - **Bento-Grid** layout (grid-cols-12).
-            - **Glassmorphism** everywhere (backdrop-blur-xl, bg-white/5, border-white/10).
-            - **Typography**: Inter/Outfit, tracking-tighter, massive gradients.
-            - **Images**: Use high-quality Unsplash URLs only.
+      try {
+        const response = await generateGeminiContent({
+          contents: [{ parts: [{ text: `${systemPrompt}\n\nKullanıcı İsteği: ${prompt} (Stil: ${style})` }] }],
+          config: {
+            temperature: 0.2
+          }
+        });
+        code = response.text || "";
+      } catch (geminiErr) {
+        console.warn("Gemini builder failed, trying Groq fallback:", geminiErr);
+        if (groq) {
+          const completion = await groq.chat.completions.create({
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: prompt },
+            ],
+            model: MODELS.BUILDER,
+            temperature: 0.1,
+          });
+          code = completion.choices[0]?.message?.content || "";
+        } else {
+          throw geminiErr;
+        }
+      }
 
-            ### 🛠️ STACK (REQUIRED):
-            - Tailwind CSS: <script src="https://cdn.tailwindcss.com"></script>
-            - Alpine.js (The Brain): <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
-            - Animate on Scroll: <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
-            - <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
-
-            ### ❌ OUTPUT RULES:
-            - Output ONLY valid, raw HTML starting with <!DOCTYPE html>.
-            - Initialize AOS: <script>document.addEventListener('DOMContentLoaded', () => { AOS.init({once: true, duration: 800}); });</script>
-            - No explanations. No markdown code blocks. Just code.`
-          },
-          { role: "user", content: prompt },
-        ],
-        model: MODELS.BUILDER,
-        temperature: 0.1,
-      });
-
-      let code = completion.choices[0]?.message?.content || "";
-      // Clean up markdown if present
       code = code.replace(/```html/g, "").replace(/```/g, "").trim();
-
       res.status(200).json({ code, success: true });
     } catch (error: any) {
       console.error("Website Generation Error:", error);
@@ -239,15 +430,14 @@ async function startServer() {
 
   // --- ANALYSIS MODULES ---
 
-  // Vision Analysis
+  // Vision Analysis (Gemini + Groq Vision Fallback)
   app.post("/api/analyze-vision", async (req, res) => {
-    if (!groq) return res.status(500).json({ error: "Groq not initialized" });
     const { image, frames, prompt } = req.body;
 
     try {
-      const systemInstruction = `Sen bir vizyon analiz uzmanısın. Gelen görselleri (tekil veya video kareleri) analiz et. 
-      Analiz sonucunu B-UILDER modülüne (kod yazıcı) girdi olarak verebilecek teknik detayda hazırla.
-      Tasarım dili, renk paleti (hex kodları), kullanılan komponentler, layout yapısı ve içerik hiyerarşisini belirt.
+      const systemInstruction = `Sen bir vizyon ve görsel analiz uzmanısın. Gelen görsel veya video karelerini dikkatle incele.
+      Kullanıcının sorusuna veya isteğine detaylı, %100 Türkçe ve net bir analiz hazırla.
+      Tasarım dili, renk paleti (hex kodları veya renk isimleri), kullanılan ögeler/komponentler, yerleşim (layout) ve görselin ana mesajını belirt.
       Yanıtını mutlaka şu JSON formatında döndür:
       {
         "design_language": "...",
@@ -258,46 +448,109 @@ async function startServer() {
         "technical_details": "..."
       }`;
 
-      const contentParts: any[] = [{ type: "text", text: `${systemInstruction}\n\nKullanıcı İsteği: ${prompt || "Bu görseli/videoyu analiz et."}` }];
-
-      if (image) {
-        contentParts.push({ type: "image_url", image_url: { url: image } });
-      } else if (frames && Array.isArray(frames)) {
-        frames.slice(0, 5).forEach((frame: string) => {
-          contentParts.push({ type: "image_url", image_url: { url: frame } });
-        });
-      } else {
-        return res.status(400).json({ error: "Image or frames are required" });
+      let rawImage = image;
+      if (!rawImage && frames && Array.isArray(frames) && frames.length > 0) {
+        rawImage = frames[0];
       }
 
-      const completion = await groq.chat.completions.create({
-        messages: [{ role: "user", content: contentParts }],
-        model: MODELS.VISION,
-        temperature: 0.2,
-        response_format: { type: "json_object" }
-      });
+      if (!rawImage) {
+        return res.status(400).json({ error: "Görsel veya video verisi bulunamadı." });
+      }
 
-      const analysis = JSON.parse(completion.choices[0]?.message?.content || "{}");
-      res.status(200).json({ analysis, success: true });
+      let mimeType = "image/jpeg";
+      let base64Data = rawImage;
+
+      if (rawImage.startsWith("data:")) {
+        const matches = rawImage.match(/^data:([^;]+);base64,(.+)$/);
+        if (matches) {
+          mimeType = matches[1];
+          base64Data = matches[2];
+        }
+      }
+
+      // 1. Gemini ile Analiz
+      try {
+        const response = await generateGeminiContent({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: `${systemInstruction}\n\nKullanıcı İsteği: ${prompt || "Bu görseli detaylı analiz et."}` },
+                {
+                  inlineData: {
+                    mimeType,
+                    data: base64Data
+                  }
+                }
+              ]
+            }
+          ],
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+
+        const rawText = response.text || "{}";
+        let parsedAnalysis: any;
+        try {
+          parsedAnalysis = JSON.parse(rawText);
+        } catch {
+          parsedAnalysis = {
+            summary: rawText,
+            design_language: "Modern Tasarım",
+            components: ["Görsel İçerik"],
+            layout: "Dengeli Düzen",
+            colors: []
+          };
+        }
+
+        return res.status(200).json({ analysis: parsedAnalysis, success: true });
+      } catch (geminiError: any) {
+        console.warn("Gemini Vision Hatası, Groq deneniyor:", geminiError.message);
+        
+        if (groq) {
+          const contentParts: any[] = [
+            { type: "text", text: `${systemInstruction}\n\nKullanıcı İsteği: ${prompt || "Bu görseli analiz et."}` },
+            { type: "image_url", image_url: { url: rawImage.startsWith("data:") ? rawImage : `data:${mimeType};base64,${base64Data}` } }
+          ];
+
+          const completion = await groq.chat.completions.create({
+            messages: [{ role: "user", content: contentParts }],
+            model: MODELS.VISION,
+            temperature: 0.2,
+            response_format: { type: "json_object" }
+          });
+
+          const analysis = JSON.parse(completion.choices[0]?.message?.content || "{}");
+          return res.status(200).json({ analysis, success: true });
+        }
+        
+        throw geminiError;
+      }
     } catch (error: any) {
       console.error("Vision Analysis Error:", error);
-      res.status(500).json({ error: error.message });
+      res.status(500).json({ error: error.message || "Görsel analizi sırasında hata oluştu" });
     }
   });
 
   // Link Analysis
   app.post("/api/analyze-link", async (req, res) => {
-    if (!groq) return res.status(500).json({ error: "Groq not initialized" });
     const { url } = req.body;
+    if (!url) return res.status(400).json({ error: "URL is required" });
 
     try {
-      const jinaUrl = `https://r.jina.ai/${url}`;
-      const jinaResponse = await axios.get(jinaUrl);
-      const markdown = jinaResponse.data;
+      let markdown = "";
+      try {
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const jinaResponse = await axios.get(jinaUrl, { timeout: 8000 });
+        markdown = jinaResponse.data || "";
+      } catch (e) {
+        markdown = `URL: ${url}`;
+      }
 
-      const systemInstruction = `Sen bir web analiz uzmanısın. Gelen sitenin markdown içeriğini incele.
-      Sitenin tasarım dilini, renk paletini (hex kodları), ana fonksiyonlarını ve içerik hiyerarşisini analiz et.
-      Yanıtını mutlaka şu JSON formatında döndür:
+      const systemInstruction = `Sen bir web analiz uzmanısın. Gelen sitenin içeriğini incele.
+      Sitenin tasarım dilini, renk paletini, ana fonksiyonlarını ve içerik hiyerarşisini analiz et.
+      Yanıtını Türkçe olarak mutlaka şu JSON formatında döndür:
       {
         "design_language": "...",
         "colors": ["#...", "#..."],
@@ -307,17 +560,30 @@ async function startServer() {
         "technical_details": "..."
       }`;
 
-      const completion = await groq.chat.completions.create({
-        messages: [
-          { role: "system", content: systemInstruction },
-          { role: "user", content: `Aşağıdaki sitenin içeriğini analiz et:\n\n${markdown}` }
-        ],
-        model: MODELS.ANALYZER,
-        temperature: 0.2,
-        response_format: { type: "json_object" }
-      });
+      let analysis: any;
+      try {
+        const response = await generateGeminiContent({
+          contents: [{ parts: [{ text: `${systemInstruction}\n\nSite İçeriği:\n\n${markdown.slice(0, 10000)}` }] }],
+          config: { responseMimeType: "application/json" }
+        });
+        analysis = JSON.parse(response.text || "{}");
+      } catch (geminiErr) {
+        if (groq) {
+          const completion = await groq.chat.completions.create({
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: `Site içeriği:\n\n${markdown.slice(0, 5000)}` }
+            ],
+            model: MODELS.ANALYZER,
+            temperature: 0.2,
+            response_format: { type: "json_object" }
+          });
+          analysis = JSON.parse(completion.choices[0]?.message?.content || "{}");
+        } else {
+          throw geminiErr;
+        }
+      }
 
-      const analysis = JSON.parse(completion.choices[0]?.message?.content || "{}");
       res.status(200).json({ analysis, success: true });
     } catch (error: any) {
       console.error("Link Analysis Error:", error);
@@ -327,17 +593,22 @@ async function startServer() {
 
   // YouTube Analysis
   app.post("/api/analyze-youtube", async (req, res) => {
-    if (!groq) return res.status(500).json({ error: "Groq not initialized" });
     const { url } = req.body;
+    if (!url) return res.status(400).json({ error: "URL is required" });
 
     try {
-      const jinaUrl = `https://r.jina.ai/${url}`;
-      const jinaResponse = await axios.get(jinaUrl);
-      const content = jinaResponse.data;
+      let content = "";
+      try {
+        const jinaUrl = `https://r.jina.ai/${url}`;
+        const jinaResponse = await axios.get(jinaUrl, { timeout: 8000 });
+        content = jinaResponse.data || "";
+      } catch (e) {
+        content = `YouTube URL: ${url}`;
+      }
 
       const systemInstruction = `Sen bir içerik ve web tasarım stratejistisin. YouTube videosu içeriğini analiz et.
       Bu videonun konusuna uygun profesyonel bir "Landing Page" taslağı oluştur.
-      Yanıtını mutlaka şu JSON formatında döndür:
+      Yanıtını Türkçe olarak mutlaka şu JSON formatında döndür:
       {
         "video_summary": "...",
         "target_audience": "...",
@@ -350,17 +621,30 @@ async function startServer() {
         "technical_details": "..."
       }`;
 
-      const completion = await groq.chat.completions.create({
-        messages: [
-          { role: "system", content: systemInstruction },
-          { role: "user", content: `Aşağıdaki YouTube videosu içeriğini analiz et:\n\n${content}` }
-        ],
-        model: MODELS.ANALYZER,
-        temperature: 0.3,
-        response_format: { type: "json_object" }
-      });
+      let analysis: any;
+      try {
+        const response = await generateGeminiContent({
+          contents: [{ parts: [{ text: `${systemInstruction}\n\nVideo İçeriği:\n\n${content.slice(0, 10000)}` }] }],
+          config: { responseMimeType: "application/json" }
+        });
+        analysis = JSON.parse(response.text || "{}");
+      } catch (geminiErr) {
+        if (groq) {
+          const completion = await groq.chat.completions.create({
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: `Video içeriği:\n\n${content.slice(0, 5000)}` }
+            ],
+            model: MODELS.ANALYZER,
+            temperature: 0.3,
+            response_format: { type: "json_object" }
+          });
+          analysis = JSON.parse(completion.choices[0]?.message?.content || "{}");
+        } else {
+          throw geminiErr;
+        }
+      }
 
-      const analysis = JSON.parse(completion.choices[0]?.message?.content || "{}");
       res.status(200).json({ analysis, success: true });
     } catch (error: any) {
       console.error("YouTube Analysis Error:", error);
@@ -370,24 +654,32 @@ async function startServer() {
 
   // Web Search
   app.post("/api/web-search", async (req, res) => {
-    if (!groq) return res.status(500).json({ error: "Groq not initialized" });
     const { query } = req.body;
+    if (!query) return res.status(400).json({ error: "Query is required" });
     const TAVILY_API_KEY = process.env.TAVILY_API_KEY;
 
-    if (!TAVILY_API_KEY) return res.status(500).json({ error: "TAVILY_API_KEY is not set" });
-
     try {
-      const tavilyResponse = await axios.post('https://api.tavily.com/search', {
-        api_key: TAVILY_API_KEY,
-        query,
-        search_depth: "advanced",
-        max_results: 5
-      });
+      let searchContext = "";
+      let sourceLinks: string[] = [];
 
-      const searchResults = tavilyResponse.data.results;
-      const searchContext = searchResults.map((r: any) => `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.content}`).join('\n\n---\n\n');
+      if (TAVILY_API_KEY) {
+        try {
+          const tavilyResponse = await axios.post('https://api.tavily.com/search', {
+            api_key: TAVILY_API_KEY,
+            query,
+            search_depth: "advanced",
+            max_results: 5
+          }, { timeout: 8000 });
 
-      const systemInstruction = `Sen bir arama asistanısın. Web arama sonuçlarını incele ve kullanıcı sorusuna en doğru yanıtı ver.
+          const searchResults = tavilyResponse.data.results || [];
+          searchContext = searchResults.map((r: any) => `Title: ${r.title}\nURL: ${r.url}\nContent: ${r.content}`).join('\n\n---\n\n');
+          sourceLinks = searchResults.map((r: any) => r.url);
+        } catch (tavilyErr) {
+          console.warn("Tavily search error, falling back to Gemini:", tavilyErr);
+        }
+      }
+
+      const systemInstruction = `Sen bir arama ve bilgi asistanısın. Kullanıcının sorusuna kapsamlı ve güncel Türkçe bir yanıt hazırla.
       Yanıtını mutlaka şu JSON formatında döndür:
       {
         "summary": "...",
@@ -397,23 +689,40 @@ async function startServer() {
         "design_recommendations": "..."
       }`;
 
-      const completion = await groq.chat.completions.create({
-        messages: [
-          { role: "system", content: systemInstruction },
-          { role: "user", content: `Soru: ${query}\n\nArama Sonuçları:\n${searchContext}` }
-        ],
-        model: MODELS.FAST,
-        temperature: 0.2,
-        response_format: { type: "json_object" }
-      });
+      let analysis: any;
+      try {
+        const response = await generateGeminiContent({
+          contents: [{ parts: [{ text: `${systemInstruction}\n\nSoru: ${query}\n\nMevcut Bağlam:\n${searchContext || "Doğrudan bilginle detaylı yanıtla."}` }] }],
+          config: { responseMimeType: "application/json" }
+        });
+        analysis = JSON.parse(response.text || "{}");
+        if ((!analysis.sources || analysis.sources.length === 0) && sourceLinks.length > 0) {
+          analysis.sources = sourceLinks;
+        }
+      } catch (geminiErr) {
+        if (groq) {
+          const completion = await groq.chat.completions.create({
+            messages: [
+              { role: "system", content: systemInstruction },
+              { role: "user", content: `Soru: ${query}\n\nArama Sonuçları:\n${searchContext}` }
+            ],
+            model: MODELS.FAST,
+            temperature: 0.2,
+            response_format: { type: "json_object" }
+          });
+          analysis = JSON.parse(completion.choices[0]?.message?.content || "{}");
+        } else {
+          throw geminiErr;
+        }
+      }
 
-      const analysis = JSON.parse(completion.choices[0]?.message?.content || "{}");
       res.status(200).json({ analysis, success: true });
     } catch (error: any) {
       console.error("Web Search Error:", error);
       res.status(500).json({ error: error.message });
     }
   });
+
 
   // AI Music Generation (Direct URL)
   app.post("/api/generate-music", async (req, res) => {

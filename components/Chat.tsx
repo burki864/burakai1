@@ -165,7 +165,11 @@ export const Chat: React.FC = () => {
                         const match = /language-(\w+)/.exec(className || '');
                         // className varsa bu bir çok satırlı kod bloğudur (```javascript vb.)
                         return match ? (
-                          <CodeBlock '')} language="{match[1]}" value="{String(children).replace(/\n$/," {...props}/>
+                          <CodeBlock
+                            language={match[1]}
+                            value={String(children).replace(/\n$/, '')}
+                            {...props}
+                          />
                         ) : (
                           // className yoksa satır içi (inline) koddur (`kod` gibi)
                           <code className="bg-zinc-800 text-emerald-400 px-1.5 py-0.5 rounded text-xs font-mono" {...props}>
