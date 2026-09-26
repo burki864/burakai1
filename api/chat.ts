@@ -14,26 +14,53 @@ Asla kırık görsel linkleri veya markdown resim formatı (![...](...)) kullanm
 Eğer kullanıcı bir görsel, video veya web sitesi oluşturmak isterse, bunu algılayıp yanıtının sonuna mutlaka [GENERATE: TYPE, PROMPT] formatında bir komut ekle. Örnek: [GENERATE: IMAGE, kedi resmi]`;
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
+  // CORS & Security Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
 
+  // Preflight
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method Not Allowed' });
+  // GET Healthcheck & Browser Test
+  if (req.method === 'GET') {
+    return res.status(200).json({
+      status: 'active',
+      service: 'BurakAI Serverless Chat Endpoint',
+      method_supported: 'POST',
+      message: 'BurakAI API aktif. Mesaj göndermek için POST isteği yapın.'
+    });
   }
 
-  const { messages, inputs } = req.body || {};
+  // Method Check (POST zorunlu)
+  if (req.method !== 'POST') {
+    return res.status(405).json({ 
+      error: 'Method Not Allowed. Sadece POST istekleri kabul edilmektedir.',
+      received_method: req.method 
+    });
+  }
+
+  // Body Parsing (String veya Obje desteği)
+  let body = req.body;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch (_) {
+      return res.status(400).json({ error: "Geçersiz JSON gövdesi." });
+    }
+  }
+
+  const { messages, inputs } = body || {};
   let chatMessages = messages;
   if (!chatMessages && inputs) {
     chatMessages = [{ role: 'user', content: inputs }];
   }
 
   if (!chatMessages || !Array.isArray(chatMessages) || chatMessages.length === 0) {
-    return res.status(400).json({ error: "Geçerli bir mesaj dizisi gereklidir." });
+    return res.status(400).json({ error: "Geçerli bir mesaj listesi (messages array) gönderilmelidir." });
   }
 
   const cleanMessages = chatMessages.map((m: any) => ({
@@ -43,49 +70,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   const errors: string[] = [];
 
-  // --- 1. GEMINI API (@google/genai & REST) ---
+  // --- 1. GEMINI API (@google/genai) ---
   const geminiApiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || process.env.GEMINI_API_KEY1;
   if (geminiApiKey) {
-    const ai = new GoogleGenAI({ apiKey: geminiApiKey });
-    const geminiContents = cleanMessages
-      .filter((m: any) => m.role !== 'system')
-      .map((m: any) => ({
-        role: m.role === 'assistant' ? 'model' : 'user',
-        parts: [{ text: m.content }]
-      }));
+    try {
+      const ai = new GoogleGenAI({ apiKey: geminiApiKey });
+      const geminiContents = cleanMessages
+        .filter((m: any) => m.role !== 'system')
+        .map((m: any) => ({
+          role: m.role === 'assistant' ? 'model' : 'user',
+          parts: [{ text: m.content }]
+        }));
 
-    if (geminiContents.length === 0) {
-      geminiContents.push({ role: 'user', parts: [{ text: 'Merhaba' }] });
-    }
-
-    for (const model of GEMINI_MODELS) {
-      try {
-        console.log(`🚀 Gemini deneniyor: ${model}`);
-        const response = await ai.models.generateContent({
-          model,
-          contents: geminiContents,
-          config: {
-            systemInstruction: SYSTEM_PROMPT,
-            temperature: 0.7
-          }
-        });
-
-        const text = response.text?.trim();
-        if (text) {
-          console.log(`✅ Gemini ${model} başarılı!`);
-          return res.status(200).json({ role: "assistant", content: text, generated_text: text });
-        }
-      } catch (err: any) {
-        const errMsg = `Gemini (${model}): ${err.message || err}`;
-        console.warn(`⚠️ ${errMsg}`);
-        errors.push(errMsg);
+      if (geminiContents.length === 0) {
+        geminiContents.push({ role: 'user', parts: [{ text: 'Merhaba' }] });
       }
+
+      for (const model of GEMINI_MODELS) {
+        try {
+          console.log(`🚀 Gemini deneniyor: ${model}`);
+          const response = await ai.models.generateContent({
+            model,
+            contents: geminiContents,
+            config: {
+              systemInstruction: SYSTEM_PROMPT,
+              temperature: 0.7
+            }
+          });
+
+          const text = response.text?.trim();
+          if (text) {
+            console.log(`✅ Gemini ${model} başarılı!`);
+            return res.status(200).json({ 
+              role: "assistant", 
+              content: text, 
+              generated_text: text,
+              provider: "gemini",
+              model 
+            });
+          }
+        } catch (err: any) {
+          const errMsg = `Gemini (${model}): ${err.message || err}`;
+          console.warn(`⚠️ ${errMsg}`);
+          errors.push(errMsg);
+        }
+      }
+    } catch (sdkErr: any) {
+      errors.push(`Gemini SDK Init Error: ${sdkErr.message}`);
     }
   } else {
-    errors.push("GEMINI_API_KEY tanımlı değil.");
+    errors.push("GEMINI_API_KEY ortam değişkeni bulunamadı.");
   }
 
-  // --- 2. GROQ API ---
+  // --- 2. GROQ API (Yüksek Hız) ---
   if (process.env.GROQ_API_KEY) {
     const groqModels = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
     for (const model of groqModels) {
@@ -118,7 +155,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         const content = data.choices?.[0]?.message?.content?.trim();
         if (content) {
           console.log(`✅ Groq ${model} başarılı!`);
-          return res.status(200).json({ role: "assistant", content, generated_text: content });
+          return res.status(200).json({ 
+            role: "assistant", 
+            content, 
+            generated_text: content,
+            provider: "groq",
+            model 
+          });
         }
       } catch (err: any) {
         const errMsg = `Groq (${model}): ${err.message || err}`;
@@ -156,7 +199,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const data = await response.json();
       const content = data.choices?.[0]?.message?.content?.trim();
       if (content) {
-        return res.status(200).json({ role: "assistant", content, generated_text: content });
+        return res.status(200).json({ 
+          role: "assistant", 
+          content, 
+          generated_text: content,
+          provider: "openai" 
+        });
       }
     } catch (err: any) {
       errors.push(`OpenAI: ${err.message || err}`);
@@ -190,18 +238,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const data = await response.json();
       const content = data.content?.[0]?.text?.trim();
       if (content) {
-        return res.status(200).json({ role: "assistant", content, generated_text: content });
+        return res.status(200).json({ 
+          role: "assistant", 
+          content, 
+          generated_text: content,
+          provider: "anthropic" 
+        });
       }
     } catch (err: any) {
       errors.push(`Anthropic: ${err.message || err}`);
     }
   }
 
-  // --- GERÇEK VE ANLAMLI HATA DÖNDÜR (Sabit Karşılama Tuzağı Yok!) ---
-  console.error("❌ Tüm yapay zeka sağlayıcıları başarısız oldu:", errors);
+  // --- JSON HATA YANITI DÖNDÜR (Kesinlikle HTML Yok, Anlaşılır Hata Detayı) ---
+  console.error("❌ Tüm modeller tükendi:", errors);
   return res.status(502).json({ 
-    error: "Yapay zeka yanıt üretemedi. Lütfen API anahtarlarınızı veya ağ bağlantınızı kontrol edin.",
+    error: "Yapay zeka modellerinden yanıt alınamadı. Lütfen Vercel panelinizde GEMINI_API_KEY veya GROQ_API_KEY ortam değişkenini tanımladığınızdan emin olun.",
     details: errors,
-    role: "assistant"
+    role: "assistant",
+    success: false
   });
 }
