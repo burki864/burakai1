@@ -1,6 +1,6 @@
 import { User } from '../types';
 
-export const isSupabaseConfigured = true; // Handled dynamically on the Aiven backend!
+export const isSupabaseConfigured = true;
 
 /**
  * Inserts or updates a user profile.
@@ -12,11 +12,14 @@ export async function createProfile(user: User) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ user })
     });
-    if (!res.ok) throw new Error('Failed to create profile');
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Profile sync failed: ${err}`);
+    }
     const json = await res.json();
     return json.data;
   } catch (error) {
-    console.error('Database Sync Error:', error);
+    console.warn('⚠️ Database Sync Warning (in-memory fallback active):', error);
     return null;
   }
 }
@@ -28,11 +31,14 @@ export async function updateProfile(userId: string, updates: { username?: string
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: userId, updates })
     });
-    if (!res.ok) throw new Error('Failed to update profile');
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Profile update failed: ${err}`);
+    }
     const json = await res.json();
     return json.data;
   } catch (error) {
-    console.error('Error updating profile:', error);
+    console.error('❌ Error updating profile:', error);
     throw error;
   }
 }
@@ -47,11 +53,14 @@ export async function sendMessage(userId: string, text: string, role: 'user' | '
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ userId, text, role })
     });
-    if (!res.ok) throw new Error('Failed to send message');
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Message persistence failed: ${err}`);
+    }
     const json = await res.json();
     return json.data;
   } catch (error) {
-    console.warn('Persistence error:', error);
+    console.warn('⚠️ Message persistence info:', error);
     return null;
   }
 }
@@ -65,11 +74,11 @@ export const dbService = {
   checkUsernameAvailability: async (username: string): Promise<boolean> => {
     try {
       const res = await fetch(`/api/db/username?username=${encodeURIComponent(username)}`);
-      if (!res.ok) throw new Error('Failed check');
+      if (!res.ok) throw new Error('Username check failed');
       const json = await res.json();
       return !!json.isAvailable;
     } catch (error) {
-      console.error('Username check error:', error);
+      console.warn('⚠️ Username check fallback:', error);
       return true;
     }
   },
@@ -78,11 +87,13 @@ export const dbService = {
   checkBanStatus: async (userId: string): Promise<{ isBanned: boolean; expiresAt?: number; reason?: string; exists: boolean }> => {
     try {
       const res = await fetch(`/api/db/ban-status?userId=${encodeURIComponent(userId)}`);
-      if (!res.ok) throw new Error('Failed check');
+      if (!res.ok) {
+        throw new Error(`Ban status check HTTP ${res.status}`);
+      }
       const json = await res.json();
-      return json.status;
+      return json.status || { isBanned: false, exists: true };
     } catch (error) {
-      console.error('Ban status check failed:', error);
+      console.warn('⚠️ Ban status check fallback (allowing session):', error);
       return { isBanned: false, exists: true };
     }
   },
@@ -98,7 +109,7 @@ export const dbService = {
       const json = await res.json();
       return json.data;
     } catch (error) {
-      console.warn('Image persistence error:', error);
+      console.warn('⚠️ Image persistence error:', error);
       return null;
     }
   },
@@ -114,7 +125,7 @@ export const dbService = {
       const json = await res.json();
       return json.data;
     } catch (error) {
-      console.warn('Video persistence error:', error);
+      console.warn('⚠️ Video persistence error:', error);
       return null;
     }
   }
@@ -132,7 +143,7 @@ export const feedbackService = {
       await res.json();
       return { success: true };
     } catch (error) {
-      console.error('Feedback submission error:', error);
+      console.error('❌ Feedback submission error:', error);
       throw error;
     }
   }

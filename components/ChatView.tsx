@@ -19,6 +19,7 @@ import Logo from './Logo';
 import GenerationAnimation from './GenerationAnimation';
 import BackgroundTheme from './BackgroundTheme';
 import FeedbackModal from './FeedbackModal';
+import VoiceSphereModal from './VoiceSphereModal';
 
 interface ChatViewProps {
   chat?: ChatSession;
@@ -96,6 +97,43 @@ const ChatView: React.FC<ChatViewProps> = ({
   const [isDraggingFile, setIsDraggingFile] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [isWebSearchActive, setIsWebSearchActive] = useState(settings.searchEnabled);
+  const [isVoiceSphereOpen, setIsVoiceSphereOpen] = useState(false);
+  const [lastFailedInput, setLastFailedInput] = useState<string | null>(null);
+
+  const handleVoiceModalMessage = (userText: string, assistantText: string) => {
+    const userMsg: Message = {
+      id: generateUUID('user-voice'),
+      role: 'user',
+      content: userText,
+      timestamp: Date.now()
+    };
+    const assistantMsg: Message = {
+      id: generateUUID('assistant-voice'),
+      role: 'assistant',
+      content: assistantText,
+      timestamp: Date.now()
+    };
+
+    let currentChatId: string;
+    let newMessages: Message[] = [];
+
+    if (!chat) {
+      if (onCreateChatWithMessage) {
+        const createdChat = onCreateChatWithMessage(userMsg, userText.slice(0, 30));
+        currentChatId = createdChat.id;
+        newMessages = [userMsg, assistantMsg];
+      } else {
+        return;
+      }
+    } else {
+      currentChatId = chat.id;
+      newMessages = [...(chat.messages || []), userMsg, assistantMsg];
+    }
+
+    onUpdateMessages(newMessages, currentChatId);
+    saveToSupabase(user.id, userText, 'user').catch(console.debug);
+    saveToSupabase(user.id, assistantText, 'assistant').catch(console.debug);
+  };
 
   useEffect(() => {
     setIsWebSearchActive(settings.searchEnabled);
@@ -415,9 +453,21 @@ const handleSend = async () => {
           <Logo size={32} />
           <div>
             <h3 className="font-black text-sm md:text-xl truncate">{chat?.title || t.welcome}</h3>
-            <span className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">Hugging Face Link Active</span>
+            <span className="text-[10px] text-blue-400 font-bold uppercase tracking-widest">BurakAI Ultra Aktif</span>
           </div>
         </div>
+
+        <button
+          onClick={() => setIsVoiceSphereOpen(true)}
+          className="flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-gradient-to-r from-blue-600/30 to-purple-600/30 hover:from-blue-600/50 hover:to-purple-600/50 border border-blue-400/40 text-blue-300 hover:text-white shadow-[0_0_15px_rgba(59,130,246,0.3)] transition-all active:scale-95 group"
+          title="Canlı 3D Küre ile Birebir Sesli Konuş"
+        >
+          <span className="relative flex h-2.5 w-2.5">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-500"></span>
+          </span>
+          <span className="text-xs font-black tracking-wider uppercase">CANLI KÜRE</span>
+        </button>
       </header>
 
       <div ref={scrollRef} className="relative z-10 flex-1 overflow-y-auto px-4 md:px-10 py-6 space-y-6 custom-scrollbar">
@@ -622,7 +672,33 @@ const handleSend = async () => {
             )}
           </AnimatePresence>
 
-          {error && <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-center gap-2"><AlertCircle size={14}/>{error}</div>}
+          {error && (
+            <div className="p-4 rounded-2xl bg-red-500/15 border border-red-500/30 text-red-300 text-xs flex items-center justify-between gap-3 shadow-xl backdrop-blur-md animate-in fade-in">
+              <div className="flex items-center gap-2.5 flex-1 min-w-0">
+                <AlertCircle size={18} className="text-red-400 shrink-0" />
+                <span className="break-words font-medium">{error}</span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                {lastFailedInput && (
+                  <button
+                    onClick={() => {
+                      setInput(lastFailedInput);
+                      setError(null);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-red-500/20 hover:bg-red-500/30 text-red-200 text-xs font-bold transition-all border border-red-500/30 active:scale-95"
+                  >
+                    Tekrar Dene
+                  </button>
+                )}
+                <button
+                  onClick={() => setError(null)}
+                  className="p-1.5 text-red-400 hover:text-white rounded-lg hover:bg-red-500/20 transition-colors"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          )}
           
           <div className="glass-panel rounded-[2.5rem] border-white/10 p-2 md:p-4 shadow-3xl">
             <textarea 
@@ -668,6 +744,14 @@ const handleSend = async () => {
         className="hidden" 
         multiple 
         accept="image/*,video/*,.pdf,.doc,.docx,.txt" 
+      />
+
+      {/* CANLI KÜRE SESLİ ASİSTAN MODALI */}
+      <VoiceSphereModal
+        isOpen={isVoiceSphereOpen}
+        onClose={() => setIsVoiceSphereOpen(false)}
+        settings={settings}
+        onNewMessage={handleVoiceModalMessage}
       />
     </div>
   );

@@ -17,6 +17,7 @@ import BackgroundTheme from './components/BackgroundTheme';
 import { Menu, X, Coins, Star } from 'lucide-react';
 import { usePoints, COST_IMAGE } from './hooks/usePoints';
 import StarExplosion from './components/StarExplosion';
+import UpdateNotification from './components/UpdateNotification';
 import { AnalysisResult } from './types';
 
 const MotionDiv = motion.div as any;
@@ -286,6 +287,9 @@ const App: React.FC = () => {
           )}
         </AnimatePresence>
       </main>
+
+      {/* APK & VERCEL REDEPLOY CANLI GÜNCELLEME BİLDİRİMİ */}
+      <UpdateNotification />
     </div>
   );
 };

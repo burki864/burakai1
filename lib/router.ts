@@ -150,28 +150,8 @@ export async function smartChatRouter(messages: any[], options: RouterOptions = 
     }
   }
 
-  // Acil durum yerel yanıtı
-  if (options.stream) {
-    async function* fallbackStream() {
-      yield {
-        choices: [
-          {
-            delta: { content: "Merhaba! BurakAI olarak hizmetinizdeyim. Size nasıl yardımcı olabilirim?" }
-          }
-        ]
-      };
-    }
-    return fallbackStream();
-  }
-
-  return {
-    choices: [
-      {
-        message: {
-          content: "Merhaba! BurakAI olarak hizmetinizdeyim. Size nasıl yardımcı olabilirim?",
-          role: "assistant"
-        }
-      }
-    ]
-  };
+  // Eğer hiçbir model yanıt veremezse, kullanıcıya gerçek hatayı ilet
+  console.error("❌ SmartChatRouter: Tüm modeller tükendi veya hata verdi.");
+  throw new Error("Yapay zeka modellerine şu anda erişilemiyor. Lütfen sistem API anahtarlarını kontrol edin veya birkaç saniye sonra tekrar deneyin.");
 }
+

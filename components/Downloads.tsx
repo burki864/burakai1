@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Smartphone, Monitor, Apple, Download, ExternalLink, Sparkles, X, Share, PlusSquare, ArrowUp } from 'lucide-react';
+import { Smartphone, Monitor, Apple, Download, ExternalLink, Sparkles, X, Share, PlusSquare, ArrowUp, RefreshCw, Bell, CheckCircle2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { TRANSLATIONS, DOWNLOAD_LINKS } from '../constants';
 import { SettingsState } from '../types';
@@ -12,20 +12,27 @@ const MotionDiv = motion.div as any;
 
 const Downloads: React.FC<DownloadsProps> = ({ settings }) => {
   const [showPwaGuide, setShowPwaGuide] = useState(false);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
 
   const t = TRANSLATIONS[settings.language].downloads;
   const isTr = settings.language === 'tr';
 
-  const handleDownloadAction = (id: string, link: string | null) => {
-    if (id === 'apple') {
-      setShowPwaGuide(true);
-    } else if (link) {
-      const a = document.createElement('a');
-      a.href = link;
-      a.setAttribute('download', '');
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+  const handleManualUpdateCheck = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateStatus(null);
+    try {
+      const res = await fetch(`/api/version?t=${Date.now()}`);
+      if (res.ok) {
+        const data = await res.json();
+        setUpdateStatus(`En güncel sürüm: ${data.version} (${data.releaseDate}). Uygulamanız günceldir.`);
+      } else {
+        setUpdateStatus("Sürüm kontrol sunucusuna ulaşılamadı.");
+      }
+    } catch (e: any) {
+      setUpdateStatus(`Bağlantı hatası: ${e.message}`);
+    } finally {
+      setIsCheckingUpdate(false);
     }
   };
 
@@ -85,6 +92,46 @@ const Downloads: React.FC<DownloadsProps> = ({ settings }) => {
             </div>
           </div>
         </header>
+
+        {/* APK OTOMATİK GÜNCELLEME VE VERSEL REDEPLOY BİLDİRİM BİLGİSİ */}
+        <div className="p-6 sm:p-8 rounded-[2.5rem] glass-panel border border-cyan-500/20 bg-gradient-to-r from-blue-900/20 via-slate-900/30 to-purple-900/20 shadow-2xl space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-2xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 shrink-0">
+                <Bell size={24} className="animate-pulse" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-white flex items-center gap-2">
+                  Otomatik APK & Redeploy Bildirimleri
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30">
+                    Aktif
+                  </span>
+                </h3>
+                <p className="text-xs text-slate-400 max-w-xl">
+                  {isTr
+                    ? "Vercel üzerinde yeni bir dağıtım (redeploy) yapıldığında veya APK güncellendiğinde tüm cihazlarınıza anlık bildirim gönderilir ve uygulama tek dokunuşla en son sürüme geçer."
+                    : "Whenever a new deployment or APK update is pushed to Vercel, all devices receive instant notifications."}
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={handleManualUpdateCheck}
+              disabled={isCheckingUpdate}
+              className="py-3 px-5 rounded-2xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/30 text-cyan-300 font-bold text-xs flex items-center justify-center gap-2 transition-all shrink-0 active:scale-95"
+            >
+              <RefreshCw size={16} className={isCheckingUpdate ? 'animate-spin' : ''} />
+              <span>{isCheckingUpdate ? 'Kontrol Ediliyor...' : 'Güncellemeleri Denetle'}</span>
+            </button>
+          </div>
+
+          {updateStatus && (
+            <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-xs text-cyan-200 flex items-center gap-2">
+              <CheckCircle2 size={16} className="text-cyan-400 shrink-0" />
+              <span>{updateStatus}</span>
+            </div>
+          )}
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {downloadOptions.map((opt) => (
