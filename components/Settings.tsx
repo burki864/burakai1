@@ -24,7 +24,8 @@ import {
   Flower2,
   Waves,
   ExternalLink,
-  ArrowRight
+  ArrowRight,
+  Key
 } from 'lucide-react';
 import { SettingsState, User, Language, ThemeType } from '../types';
 import { TRANSLATIONS } from '../constants';
@@ -56,6 +57,28 @@ const Settings: React.FC<SettingsProps> = ({
   const [isSearching, setIsSearching] = useState(false);
   const [searchResult, setSearchResult] = useState<{ summary: string; sources: { title: string; url: string }[] } | null>(null);
   const [searchError, setSearchError] = useState<string | null>(null);
+
+  // Gemini API Key State
+  const [geminiKey, setGeminiKey] = useState(() => {
+    try {
+      return localStorage.getItem('burakai_gemini_api_key') || '';
+    } catch (_) {
+      return '';
+    }
+  });
+  const [keySaved, setKeySaved] = useState(false);
+
+  const handleSaveGeminiKey = () => {
+    try {
+      if (geminiKey.trim()) {
+        localStorage.setItem('burakai_gemini_api_key', geminiKey.trim());
+      } else {
+        localStorage.removeItem('burakai_gemini_api_key');
+      }
+      setKeySaved(true);
+      setTimeout(() => setKeySaved(false), 2500);
+    } catch (_) {}
+  };
 
   const t = TRANSLATIONS[settings.language].settings;
 
@@ -497,6 +520,49 @@ const Settings: React.FC<SettingsProps> = ({
                 className={`w-12 h-6 sm:w-14 sm:h-8 rounded-full p-1 transition-colors shrink-0 ${settings.showTimestamps ? 'bg-[var(--accent-primary)]' : 'bg-slate-800'}`}
               >
                 <div className={`w-4 h-4 sm:w-6 sm:h-6 rounded-full bg-white transition-transform ${settings.showTimestamps ? 'translate-x-6 sm:translate-x-6' : 'translate-x-0'}`}></div>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        {/* Gemini API Key Configuration */}
+        <section className="space-y-4 md:space-y-6">
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="p-2.5 sm:p-3 rounded-xl sm:rounded-2xl bg-cyan-500/20 text-cyan-400">
+              <Key size={20} className="sm:w-6 sm:h-6" />
+            </div>
+            <div>
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight">Yapay Zeka API Anahtarı</h2>
+              <p className="text-slate-500 text-[9px] sm:text-sm font-bold uppercase tracking-widest">Google Gemini İstemci Bağlantısı</p>
+            </div>
+          </div>
+
+          <div className="p-5 sm:p-7 rounded-2xl sm:rounded-[2.5rem] glass-panel border border-cyan-500/20 bg-gradient-to-br from-cyan-950/20 to-slate-900/40 space-y-4 shadow-xl">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="text-xs sm:text-sm font-extrabold text-white">Google Gemini API Key</span>
+              <span className="text-[10px] px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30 w-fit">
+                {process.env.GEMINI_API_KEY ? 'Ortam Değişkeni Aktif' : (geminiKey ? 'Özel Anahtar Kayıtlı' : 'Anahtar Bekleniyor')}
+              </span>
+            </div>
+
+            <p className="text-xs text-slate-400 leading-relaxed">
+              Vercel veya statik yayınlarda Gemini modelini doğrudan istemci taraflı çalıştırmak için API anahtarınızı girebilirsiniz.
+            </p>
+
+            <div className="flex flex-col sm:flex-row gap-2">
+              <input 
+                type="password"
+                value={geminiKey}
+                onChange={(e) => setGeminiKey(e.target.value)}
+                placeholder="AIzaSy... (Gemini API Anahtarınız)"
+                className="flex-1 bg-slate-950/60 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder:text-slate-600 focus:border-cyan-500 outline-none transition-all"
+              />
+              <button
+                onClick={handleSaveGeminiKey}
+                className="py-3 px-6 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-all shrink-0 active:scale-95"
+              >
+                {keySaved ? <CheckCircle size={16} className="text-white" /> : <Save size={16} />}
+                <span>{keySaved ? 'Kaydedildi!' : 'Kaydet'}</span>
               </button>
             </div>
           </div>
