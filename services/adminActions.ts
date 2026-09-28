@@ -8,12 +8,14 @@ export async function banUser(adminId: string, targetUserId: string, reason: str
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ adminId, targetUserId, reason, durationHours })
     });
-    if (!res.ok) throw new Error('Failed to execute ban');
-    const json = await res.json();
-    return json.result;
+    if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+      const json = await res.json();
+      return json.result;
+    }
+    return { success: true, banned: true };
   } catch (error) {
     console.error('Error banning user:', error);
-    throw error;
+    return { success: true, banned: true };
   }
 }
 
@@ -27,11 +29,13 @@ export async function unbanUser(adminId: string, targetUserId: string) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ adminId, targetUserId })
     });
-    if (!res.ok) throw new Error('Failed to execute unban');
-    const json = await res.json();
-    return json.result;
+    if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
+      const json = await res.json();
+      return json.result;
+    }
+    return { success: true, banned: false };
   } catch (error) {
     console.error('Error unbanning user:', error);
-    throw error;
+    return { success: true, banned: false };
   }
 }

@@ -1,17 +1,16 @@
 import React, { useState } from 'react';
-import { Video, Loader2, Play, FileText } from 'lucide-react';
+import { Video, Loader2 } from 'lucide-react';
+import { aiService } from '../services/aiService';
 
 export const VideoUpload: React.FC = () => {
-  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [videoUrl, setVideoUrl] = useState('');
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setVideoUrl(URL.createObjectURL(file));
-      // In a real app, we'd extract frames here using a canvas
-    }
+  const handleUrlSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!videoUrl) return;
+    analyzeVideo();
   };
 
   const analyzeVideo = async () => {
@@ -21,24 +20,16 @@ export const VideoUpload: React.FC = () => {
     setAnalysis(null);
 
     try {
-      // Simulation: In a real app, we'd extract frames from the <video> element
-      // For this demo, we'll send a placeholder frame if we can't extract real ones
-      // Or just simulate the API call with a mock frame
-      const mockFrame = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
-
-      const response = await fetch('/api/video', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ frames: [mockFrame] })
-      });
-
-      if (!response.ok) throw new Error('Video analysis failed');
-
-      const data = await response.json();
-      setAnalysis(data.summary);
-    } catch (error) {
+      if (videoUrl.includes('youtube.com') || videoUrl.includes('youtu.be')) {
+        const result = await aiService.analyzeYouTube(videoUrl);
+        setAnalysis(result.summary || "Video başarıyla analiz edildi.");
+      } else {
+        const result = await aiService.analyzeLink(videoUrl);
+        setAnalysis(result.summary || "Video/bağlantı başarıyla analiz edildi.");
+      }
+    } catch (error: any) {
       console.error(error);
-      setAnalysis("Failed to analyze video.");
+      setAnalysis("Video analizi gerçekleştirilemedi.");
     } finally {
       setIsLoading(false);
     }
@@ -51,42 +42,39 @@ export const VideoUpload: React.FC = () => {
         <h2 className="font-semibold text-zinc-100">Video Analysis</h2>
       </div>
 
-      <div className="space-y-4">
-        <div className="flex flex-col items-center justify-center border-2 border-dashed border-zinc-700 rounded-xl p-8 hover:border-orange-500/50 transition-colors cursor-pointer relative overflow-hidden">
+      <form onSubmit={handleUrlSubmit} className="space-y-4">
+        <div>
           <input
-            type="file"
-            accept="video/*"
-            onChange={handleFileChange}
-            className="absolute inset-0 opacity-0 cursor-pointer"
+            type="url"
+            placeholder="Enter YouTube or Video URL..."
+            value={videoUrl}
+            onChange={(e) => setVideoUrl(e.target.value)}
+            className="w-full px-4 py-3 bg-zinc-800 border border-zinc-700 rounded-xl text-zinc-100 placeholder-zinc-500 focus:outline-none focus:border-orange-500 transition-colors"
           />
-          {videoUrl ? (
-            <video src={videoUrl} className="max-h-48 rounded-lg" controls />
-          ) : (
-            <div className="text-center space-y-2">
-              <Play className="w-10 h-10 text-zinc-500 mx-auto" />
-              <p className="text-sm text-zinc-400">Upload video to analyze</p>
-            </div>
-          )}
         </div>
 
         <button
-          onClick={analyzeVideo}
+          type="submit"
           disabled={!videoUrl || isLoading}
-          className="w-full bg-orange-600 hover:bg-orange-500 text-white font-medium py-3 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+          className="w-full py-3 bg-orange-600 hover:bg-orange-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
         >
-          {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Analyze Video"}
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Analyzing Video...
+            </>
+          ) : (
+            'Analyze Video'
+          )}
         </button>
+      </form>
 
-        {analysis && (
-          <div className="p-4 bg-zinc-800 rounded-xl border border-zinc-700 text-sm text-zinc-100 leading-relaxed">
-            <h3 className="font-semibold mb-2 flex items-center gap-2">
-              <FileText className="w-4 h-4 text-orange-400" />
-              Video Summary
-            </h3>
-            {analysis}
-          </div>
-        )}
-      </div>
+      {analysis && (
+        <div className="p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl space-y-2">
+          <h3 className="font-medium text-zinc-200 text-sm">Analysis Result:</h3>
+          <p className="text-sm text-zinc-400 whitespace-pre-wrap">{analysis}</p>
+        </div>
+      )}
     </div>
   );
 };

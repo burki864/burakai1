@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { Upload, Search, Loader2, FileImage } from 'lucide-react';
+import { Search, Loader2 } from 'lucide-react';
+import { aiService } from '../services/aiService';
 
 export const VisionUpload: React.FC = () => {
   const [image, setImage] = useState<string | null>(null);
@@ -24,19 +25,19 @@ export const VisionUpload: React.FC = () => {
     setAnalysis(null);
 
     try {
-      const response = await fetch('/api/vision', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ image })
-      });
+      const result = await aiService.analyzeVision("Bu görseli analiz et ve açıkla.", [
+        {
+          type: 'image',
+          name: 'uploaded-image.jpg',
+          data: image,
+          mimeType: 'image/jpeg'
+        }
+      ]);
 
-      if (!response.ok) throw new Error('Analysis failed');
-
-      const data = await response.json();
-      setAnalysis(data.content);
-    } catch (error) {
-      console.error(error);
-      setAnalysis("Failed to analyze image.");
+      setAnalysis(result.analysis || "Görsel analizi başarıyla tamamlandı.");
+    } catch (error: any) {
+      console.error("Vision Analysis Error:", error);
+      setAnalysis(error.message || "Görsel analizi yapılamadı.");
     } finally {
       setIsLoading(false);
     }
@@ -58,11 +59,17 @@ export const VisionUpload: React.FC = () => {
             className="absolute inset-0 opacity-0 cursor-pointer"
           />
           {image ? (
-            <img src={image} alt="Preview" className="max-h-48 rounded-lg" />
+            <img
+              src={image}
+              alt="Uploaded preview"
+              className="max-h-64 object-contain rounded-lg"
+            />
           ) : (
             <div className="text-center space-y-2">
-              <Upload className="w-10 h-10 text-zinc-500 mx-auto" />
-              <p className="text-sm text-zinc-400">Click or drag to upload image</p>
+              <Search className="w-8 h-8 text-zinc-500 mx-auto" />
+              <p className="text-sm text-zinc-400">
+                Click or drag and drop an image to analyze
+              </p>
             </div>
           )}
         </div>
@@ -70,18 +77,22 @@ export const VisionUpload: React.FC = () => {
         <button
           onClick={analyzeImage}
           disabled={!image || isLoading}
-          className="w-full bg-purple-600 hover:bg-purple-500 text-white font-medium py-3 rounded-xl transition-colors flex items-center justify-center gap-2 disabled:opacity-50"
+          className="w-full py-3 bg-purple-600 hover:bg-purple-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-medium rounded-xl transition-colors flex items-center justify-center gap-2"
         >
-          {isLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Analyze Image"}
+          {isLoading ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              Analyzing...
+            </>
+          ) : (
+            'Analyze Image'
+          )}
         </button>
 
         {analysis && (
-          <div className="p-4 bg-zinc-800 rounded-xl border border-zinc-700 text-sm text-zinc-100 leading-relaxed">
-            <h3 className="font-semibold mb-2 flex items-center gap-2">
-              <FileImage className="w-4 h-4 text-purple-400" />
-              Analysis Result
-            </h3>
-            {analysis}
+          <div className="p-4 bg-zinc-800/50 border border-zinc-700/50 rounded-xl space-y-2">
+            <h3 className="font-medium text-zinc-200 text-sm">Analysis Result:</h3>
+            <p className="text-sm text-zinc-400 whitespace-pre-wrap">{analysis}</p>
           </div>
         )}
       </div>

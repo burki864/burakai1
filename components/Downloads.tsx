@@ -23,7 +23,7 @@ const Downloads: React.FC<DownloadsProps> = ({ settings }) => {
     setUpdateStatus(null);
     try {
       const res = await fetch(`/api/version?t=${Date.now()}`);
-      if (res.ok) {
+      if (res.ok && res.headers.get('content-type')?.includes('application/json')) {
         const data = await res.json();
         setUpdateStatus(`En güncel sürüm: ${data.version} (${data.releaseDate}). Uygulamanız günceldir.`);
       } else {

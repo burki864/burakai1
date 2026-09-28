@@ -33,7 +33,7 @@ export const UpdateNotification: React.FC = () => {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       });
-      if (!res.ok) return;
+      if (!res.ok || !res.headers.get('content-type')?.includes('application/json')) return;
 
       const data: VersionInfo = await res.json();
       const storedTime = localStorage.getItem(LAST_BUILD_KEY);

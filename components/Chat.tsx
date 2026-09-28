@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { atomDark } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { aiService } from '../services/aiService';
 
 interface Message {
   id: string;
@@ -84,33 +85,27 @@ export const Chat: React.FC = () => {
     setIsLoading(true);
 
     try {
-      const cleanMessages = [...messages, userMsg].map(({ role, content }) => ({
-        role,
-        content
+      const historyMessages = messages.map(m => ({
+        id: m.id,
+        role: m.role,
+        content: m.content,
+        timestamp: Date.now()
       }));
 
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: cleanMessages })
-      });
-
-      if (!response.ok) throw new Error('Sunucu Hatası');
-
-      const data = await response.json();
+      const responseText = await aiService.generateText(userMsg.content, historyMessages);
       
       setMessages(prev => [...prev, { 
         id: crypto.randomUUID(), 
         role: 'assistant', 
-        content: data.content 
+        content: responseText 
       }]);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error("Chat Error:", error);
       setMessages(prev => [...prev, { 
         id: crypto.randomUUID(),
         role: 'assistant', 
-        content: 'Şu an bağlantı kurulamıyor, lütfen birazdan tekrar dene.' 
+        content: error.message || 'Şu an bağlantı kurulamıyor, lütfen birazdan tekrar dene.' 
       }]);
     } finally {
       setIsLoading(false);
